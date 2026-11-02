@@ -1,0 +1,511 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Soil Probe Simulator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: field bench — soil cross-section left, the device itself centre, firmware trace right; stacks on phones */
+:root {
+  --bg: #f3efe8; --panel: #fbf9f5; --ink: #2a2420; --muted: #6f655c; --line: #ddd3c6;
+  --laterite: #a4522e; --laterite-soft: #e9c7b3; --accent: #1f6f5c;
+  --asa: #3a3e44; --asa-edge: #24272b; --asa-text: #c9cdd2; --oled-bg: #05070a; --oled-px: #7fd4ff;
+  --led-blue: #2f6bff; --led-green: #1fc35a; --led-yellow: #ffc21a; --led-red: #ff3a2e;
+  --warn: #b5541c;
+  --display: "Barlow Condensed", "Arial Narrow", sans-serif;
+  --body: "Barlow", "Segoe UI", system-ui, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #1b1815; --panel: #24201c; --ink: #eee7de; --muted: #a99d90; --line: #3a332c;
+  --laterite: #d07a50; --laterite-soft: #4a2e22; --accent: #5cc4a6; --warn: #e48a52; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #1b1815; --panel: #24201c; --ink: #eee7de; --muted: #a99d90; --line: #3a332c;
+  --laterite: #d07a50; --laterite-soft: #4a2e22; --accent: #5cc4a6; --warn: #e48a52; color-scheme: dark }
+* { box-sizing: border-box }
+body { background: var(--bg); color: var(--ink); font-family: var(--body); font-size: 15px; line-height: 1.45;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 20px 40px }
+.wrap { max-width: 1240px; margin: 0 auto; display: grid; gap: 20px }
+header h1 { font-family: var(--display); font-weight: 700; font-size: clamp(28px, 4vw, 40px); letter-spacing: .01em; margin: 0; text-wrap: balance }
+header p { margin: 4px 0 0; color: var(--muted); max-width: 75ch }
+.grid { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: 20px; align-items: start }
+@media (max-width: 1020px) { .grid { grid-template-columns: minmax(0, 1fr) } .device-col { order: -1 } }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; display: grid; gap: 14px; min-width: 0 }
+h2 { font-family: var(--display); font-weight: 600; font-size: 20px; margin: 0; letter-spacing: .02em }
+.label { font-family: var(--display); font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted) }
+.row { display: grid; grid-template-columns: 1fr auto; gap: 4px 10px; align-items: center }
+.row output { font-family: var(--mono); font-size: 13px; font-variant-numeric: tabular-nums }
+input[type=range] { width: 100%; grid-column: 1 / -1; accent-color: var(--laterite) }
+.seg { display: flex; flex-wrap: wrap; gap: 6px }
+.seg button, .btn { font: 600 14px var(--body); border: 1px solid var(--line); background: var(--bg); color: var(--ink);
+  padding: 6px 10px; border-radius: 6px; cursor: pointer }
+.seg button[aria-pressed="true"] { background: var(--laterite); border-color: var(--laterite); color: #fff }
+button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px }
+.check { display: flex; gap: 8px; align-items: center }
+.note { font-size: 13px; color: var(--muted) }
+canvas.soil { width: 100%; max-width: 100%; height: auto; aspect-ratio: 4 / 3; border-radius: 8px; display: block }
+
+/* the device */
+.device-col { display: grid; justify-items: center; gap: 10px }
+.head { width: 300px; max-width: 100%; background: linear-gradient(160deg, #474c53, var(--asa) 55%, #2f3237); border: 2px solid var(--asa-edge);
+  border-radius: 18px; padding: 18px 16px 22px; display: grid; grid-template-columns: auto 1fr; gap: 14px 16px; position: relative;
+  box-shadow: 0 10px 24px rgba(0,0,0,.25), inset 0 1px 0 rgba(255,255,255,.08) }
+.leds { display: grid; gap: 14px; padding-top: 26px }
+.ledrow { display: flex; align-items: center; gap: 8px }
+.led { width: 26px; height: 26px; border-radius: 50%; background: #15171a; box-shadow: inset 0 2px 4px rgba(0,0,0,.7); position: relative }
+.led::after { content: ""; position: absolute; inset: 4px; border-radius: 50%; background: var(--c); opacity: .14; transition: opacity .08s }
+.led.on::after { opacity: 1; box-shadow: 0 0 14px 6px var(--c) }
+.led.dim::after { opacity: .5; box-shadow: 0 0 6px 2px var(--c) }
+.sym { width: 22px; height: 22px; border: 1px dashed #6b7078; border-radius: 3px }
+.screenwrap { display: grid; justify-items: center; gap: 6px }
+.oled { background: var(--oled-bg); border: 6px solid #111; border-radius: 4px; image-rendering: pixelated; width: 128px; height: 256px }
+.door { grid-column: 1 / -1; border: 1px solid #555a61; border-radius: 6px; color: var(--asa-text); font: 500 11px var(--display);
+  letter-spacing: .08em; text-transform: uppercase; padding: 4px 8px; text-align: center }
+.pushwrap { grid-column: 1 / -1; display: grid; justify-items: center; gap: 4px }
+.push { width: 68px; height: 68px; border-radius: 50%; border: 3px solid #9aa0a7; background: radial-gradient(circle at 40% 35%, #e6e8ea, #a9adb2 70%);
+  cursor: pointer; box-shadow: 0 4px 0 #6d7177; touch-action: none; user-select: none; -webkit-user-select: none }
+.push:active, .push.down { transform: translateY(3px); box-shadow: 0 1px 0 #6d7177 }
+.pushhint { color: var(--asa-text); font-size: 12px; text-align: center }
+.handle { width: 40px; height: 70px; background: var(--asa); border: 2px solid var(--asa-edge); border-top: 0; border-radius: 0 0 10px 10px }
+.status { font-family: var(--mono); font-size: 13px; color: var(--muted); min-height: 1.4em; text-align: center; max-width: 300px }
+
+/* trace */
+table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums }
+td, th { padding: 4px 6px; border-bottom: 1px solid var(--line); text-align: left; font-size: 13px; vertical-align: top }
+td.v { font-family: var(--mono); white-space: nowrap; text-align: right }
+th { font: 600 12px var(--display); text-transform: uppercase; letter-spacing: .06em; color: var(--muted) }
+.scroll { overflow-x: auto }
+.chip { display: inline-block; padding: 1px 8px; border-radius: 99px; font: 600 12px var(--display); letter-spacing: .05em; color: #111 }
+.flag { color: var(--warn); font-weight: 600 }
+footer { color: var(--muted); font-size: 13px; max-width: 90ch }
+@media (prefers-reduced-motion: reduce) { .led::after { transition: none } }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header>
+    <h1>Soil probe simulator, revision A</h1>
+    <p>Set the soil, push the probe in to a depth mark and press the button. The device runs the same steps as the revision A
+      firmware: the 5×7 font and portrait screen, frequency → x → VWC → colour with the stored parameters, the 15 s result,
+      the low-battery and probe-fault patterns, and the 3 s hold for the soil-type menu. Soil behaviour is illustrative.</p>
+  </header>
+
+  <div class="grid">
+    <!-- field -->
+    <section class="panel" aria-labelledby="h-field">
+      <h2 id="h-field">In the field</h2>
+      <canvas class="soil" id="soil" width="480" height="360" aria-label="Soil cross-section with the probe"></canvas>
+      <div>
+        <div class="label">Moisture presets</div>
+        <div class="seg" id="presets">
+          <button data-p="wet">Just watered</button><button data-p="drying">Top drying out</button>
+          <button data-p="dry">Dry, needs water</button><button data-p="flooded">Waterlogged</button>
+        </div>
+      </div>
+      <div class="row"><label for="m1">Soil moisture 0–5 cm</label><output id="m1o"></output><input id="m1" type="range" min="2" max="45" step="0.5"></div>
+      <div class="row"><label for="m2">5–10 cm</label><output id="m2o"></output><input id="m2" type="range" min="2" max="45" step="0.5"></div>
+      <div class="row"><label for="m3">10–15 cm</label><output id="m3o"></output><input id="m3" type="range" min="2" max="45" step="0.5"></div>
+      <div>
+        <div class="label">Push in to the mark</div>
+        <div class="seg" id="depth" role="group" aria-label="Insertion depth">
+          <button data-d="50">5 cm (1 dot)</button><button data-d="100">10 cm (2 dots)</button><button data-d="150">15 cm (3 dots)</button>
+        </div>
+      </div>
+      <div class="row"><label for="st">Soil temperature</label><output id="sto"></output><input id="st" type="range" min="15" max="45" step="0.5"></div>
+      <div class="row"><label for="ec">Soil salinity (EC at 25 °C)</label><output id="eco"></output><input id="ec" type="range" min="0" max="4" step="0.05"></div>
+    </section>
+
+    <!-- device -->
+    <section class="device-col" aria-label="The device">
+      <div class="head">
+        <div class="leds" aria-label="Lights, blue at the top">
+          <div class="ledrow"><div class="led" id="L3" style="--c: var(--led-blue)"></div><div class="sym" title="symbol chosen with the farmers"></div></div>
+          <div class="ledrow"><div class="led" id="L2" style="--c: var(--led-green)"></div><div class="sym"></div></div>
+          <div class="ledrow"><div class="led" id="L1" style="--c: var(--led-yellow)"></div><div class="sym"></div></div>
+          <div class="ledrow"><div class="led" id="L0" style="--c: var(--led-red)"></div><div class="sym"></div></div>
+        </div>
+        <div class="screenwrap"><canvas class="oled" id="oled" width="64" height="128" aria-label="OLED screen, portrait"></canvas></div>
+        <div class="door">Battery and service door · 4 × AA</div>
+        <div class="pushwrap">
+          <div class="push" id="push" role="button" tabindex="0" aria-label="Push button: press to measure, hold 3 s for the soil-type menu"></div>
+          <div class="pushhint">Press to measure · hold 3 s: soil type</div>
+        </div>
+      </div>
+      <div class="handle" aria-hidden="true"></div>
+      <div class="status" id="status" aria-live="polite">Asleep. Press the button.</div>
+    </section>
+
+    <!-- firmware -->
+    <section class="panel" aria-labelledby="h-fw">
+      <h2 id="h-fw">Inside the firmware</h2>
+      <div>
+        <div class="label">Stored calibration</div>
+        <div class="seg" id="cal" role="group" aria-label="Calibration">
+          <button data-c="placeholder">As flashed (placeholders)</button><button data-c="example">Example calibration</button>
+        </div>
+        <p class="note" id="calnote"></p>
+      </div>
+      <div class="row"><label for="vb">Battery voltage (4 × AA)</label><output id="vbo"></output><input id="vb" type="range" min="3.6" max="6.4" step="0.05"></div>
+      <div class="row"><label for="at">Air temperature</label><output id="ato"></output><input id="at" type="range" min="15" max="45" step="0.5"></div>
+      <label class="check"><input type="checkbox" id="cable" checked> Probe cable connected</label>
+      <label class="check"><input type="checkbox" id="fast"> Fast time (15 s result shown for 4 s)</label>
+      <label class="check"><input type="checkbox" id="sound" checked> Sound (piezo 2.7 kHz, low tones 1 kHz)</label>
+      <div class="scroll"><table id="trace" aria-label="Last measurement"><tbody><tr><td>No reading yet.</td></tr></tbody></table></div>
+      <div>
+        <div class="label">Log in the 24LC512 (newest first)</div>
+        <div class="scroll"><table id="log"><thead><tr><th>No</th><th>Freq Hz</th><th>VWC %</th><th>Class</th><th>Soil</th><th>Bat V</th><th>Flags</th></tr></thead><tbody></tbody></table></div>
+      </div>
+    </section>
+  </div>
+
+  <footer>
+    Firmware values: f_air 500 kHz, f_water 100 kHz, 8 gates averaged, k_temp = k_ec = 0, ec_kcell 1, low battery 4.40 V, very low 4.10 V,
+    display 15 s, menu timeout 15 s. "Example calibration" loads the worked example from <code>docs/calibration.md</code>
+    (Standard: VWC = −0.206 + 64.222 x, thresholds 17.8 / 20.9 / 25.5 %); Clay and Sand keep placeholders and show UNCAL.
+    The simulated soil answers with that example curve plus a small salinity effect and reading noise, so readings are illustrative, not measured.
+    Below 4.1 V blue and green are drawn dim (brightness TO VERIFY).
+  </footer>
+</div>
+
+<script>
+"use strict";
+// ---------------------------------------------------------------- firmware constants (config.h, params defaults)
+const F_AIR = 500000, F_WATER = 100000, N_AVG = 8, VBAT_LOW = 4400, VBAT_CRIT = 4100, MENU_TIMEOUT = 15000, HOLD_MS = 3000;
+const SOILS = ["STANDARD", "CLAY", "SAND"];
+const PLACEHOLDER = [ { c: [0, 50, 0], t: [120, 200, 320] }, { c: [0, 55, 0], t: [200, 280, 400] }, { c: [0, 40, 0], t: [60, 100, 180] } ];
+const EXAMPLE_STD = { c: [-0.206, 64.222, 0], t: [178, 209, 255] };
+const CLASS_COLOUR = ["RED", "YELLOW", "GREEN", "BLUE"], CLASS_TEXT = ["DRY", "MODERATE", "ADEQUATE", "VERY WET"];
+const CHIP = ["var(--led-red)", "var(--led-yellow)", "var(--led-green)", "var(--led-blue)"];
+// electrode 13-49 mm from the point (fork_pcb.py)
+const ELEC_LO = 13, ELEC_HI = 49;
+
+// 5 x 7 font, ASCII 0x20-0x5A, one byte per column, bit 0 at the top (oled.cpp)
+const FONT = [
+  [0x00,0x00,0x00,0x00,0x00],[0x00,0x00,0x5F,0x00,0x00],[0x00,0x07,0x00,0x07,0x00],[0x14,0x7F,0x14,0x7F,0x14],[0x24,0x2A,0x7F,0x2A,0x12],
+  [0x23,0x13,0x08,0x64,0x62],[0x36,0x49,0x56,0x20,0x50],[0x00,0x08,0x07,0x03,0x00],[0x00,0x1C,0x22,0x41,0x00],[0x00,0x41,0x22,0x1C,0x00],
+  [0x2A,0x1C,0x7F,0x1C,0x2A],[0x08,0x08,0x3E,0x08,0x08],[0x00,0x50,0x30,0x00,0x00],[0x08,0x08,0x08,0x08,0x08],[0x00,0x60,0x60,0x00,0x00],
+  [0x20,0x10,0x08,0x04,0x02],[0x3E,0x51,0x49,0x45,0x3E],[0x00,0x42,0x7F,0x40,0x00],[0x72,0x49,0x49,0x49,0x46],[0x21,0x41,0x49,0x4D,0x33],
+  [0x18,0x14,0x12,0x7F,0x10],[0x27,0x45,0x45,0x45,0x39],[0x3C,0x4A,0x49,0x49,0x31],[0x41,0x21,0x11,0x09,0x07],[0x36,0x49,0x49,0x49,0x36],
+  [0x46,0x49,0x49,0x29,0x1E],[0x00,0x36,0x36,0x00,0x00],[0x00,0x56,0x36,0x00,0x00],[0x08,0x14,0x22,0x41,0x00],[0x14,0x14,0x14,0x14,0x14],
+  [0x00,0x41,0x22,0x14,0x08],[0x02,0x01,0x59,0x09,0x06],[0x3E,0x41,0x5D,0x59,0x4E],[0x7C,0x12,0x11,0x12,0x7C],[0x7F,0x49,0x49,0x49,0x36],
+  [0x3E,0x41,0x41,0x41,0x22],[0x7F,0x41,0x41,0x41,0x3E],[0x7F,0x49,0x49,0x49,0x41],[0x7F,0x09,0x09,0x09,0x01],[0x3E,0x41,0x41,0x51,0x73],
+  [0x7F,0x08,0x08,0x08,0x7F],[0x00,0x41,0x7F,0x41,0x00],[0x20,0x40,0x41,0x3F,0x01],[0x7F,0x08,0x14,0x22,0x41],[0x7F,0x40,0x40,0x40,0x40],
+  [0x7F,0x02,0x1C,0x02,0x7F],[0x7F,0x04,0x08,0x10,0x7F],[0x3E,0x41,0x41,0x41,0x3E],[0x7F,0x09,0x09,0x09,0x06],[0x3E,0x41,0x51,0x21,0x5E],
+  [0x7F,0x09,0x19,0x29,0x46],[0x26,0x49,0x49,0x49,0x32],[0x03,0x01,0x7F,0x01,0x03],[0x3F,0x40,0x40,0x40,0x3F],[0x1F,0x20,0x40,0x20,0x1F],
+  [0x3F,0x40,0x38,0x40,0x3F],[0x63,0x14,0x08,0x14,0x63],[0x03,0x04,0x78,0x04,0x03],[0x61,0x59,0x49,0x4D,0x43] ];
+
+// ---------------------------------------------------------------- state
+const $ = id => document.getElementById(id);
+const S = { m: [30, 26, 24], depth: 100, soilT: 31, ec: 0.3, vbat: 6.2, airT: 34, cal: "placeholder", soil: 0,
+  logN: 0, log: [], busy: false };
+let screenOn = false, timers = [], audio = null;
+const ram = new Uint8Array(8 * 128);          // SSD1306 page memory: 8 pages x 128 columns
+
+// ---------------------------------------------------------------- OLED driver (oled.cpp oledLine, portrait)
+function glyphColumn(ch, col) {
+  if (col >= 5) return 0;
+  ch = ch.toUpperCase();
+  if (ch < " " || ch > "Z") ch = "?";
+  return FONT[ch.charCodeAt(0) - 32][col];
+}
+function oledClear() { ram.fill(0); }
+function oledLine(row, s, size = 1) {
+  const pitch = size === 2 ? 12 : 6, height = size === 2 ? 16 : 8;
+  if (row * 8 + height > 128) return;
+  const len = Math.min(s.length, Math.floor(64 / pitch));
+  for (let page = 0; page < 8; page++)
+    for (let v = 0; v < height; v++) {
+      const bit = size === 2 ? v >> 1 : v;
+      let b = 0;
+      for (let k = 0; k < 8; k++) {
+        const u = page * 8 + k, ci = Math.floor(u / pitch);
+        if (ci < len && (glyphColumn(s[ci], Math.floor((u % pitch) / size)) >> bit & 1)) b |= 1 << k;
+      }
+      ram[page * 128 + row * 8 + v] = b;
+    }
+}
+function oledPaint() {
+  const c = $("oled"), g = c.getContext("2d");
+  const img = g.createImageData(64, 128);
+  const px = getComputedStyle(document.documentElement).getPropertyValue("--oled-px").trim() || "#7fd4ff";
+  const [r, gg, b] = [1, 3, 5].map(i => parseInt(px.slice(i, i + 2), 16));
+  for (let v = 0; v < 128; v++) for (let u = 0; u < 64; u++) {
+    const on = screenOn && (ram[(u >> 3) * 128 + v] >> (u & 7) & 1);
+    const i = (v * 64 + u) * 4;
+    img.data[i] = on ? r : 5; img.data[i + 1] = on ? gg : 7; img.data[i + 2] = on ? b : 10; img.data[i + 3] = 255;
+  }
+  g.putImageData(img, 0, 0);
+}
+
+// ---------------------------------------------------------------- lights and sound (ui.cpp)
+const vbatMv = () => Math.round(S.vbat * 1000);
+function ledsOff() { for (let i = 0; i < 4; i++) $("L" + i).className = "led"; }
+function ledShow(onMask) {
+  for (let i = 0; i < 4; i++) {
+    const dimmed = (i === 2 || i === 3) && vbatMv() < VBAT_CRIT;   // blue and green dim below 4.1 V (TO VERIFY)
+    $("L" + i).className = "led" + (onMask[i] ? (dimmed ? " dim" : " on") : "");
+  }
+}
+const ledShowClass = c => ledShow([0, 1, 2, 3].map(i => i === c));
+const ledShowCount = n => ledShow([0, 1, 2, 3].map(i => i < n));
+function beep(hz, ms) {
+  if (!$("sound").checked) return;
+  try {
+    audio = audio || new (window.AudioContext || window.webkitAudioContext)();
+    const o = audio.createOscillator(), g = audio.createGain();
+    o.type = "square"; o.frequency.value = hz; g.gain.value = 0.04;
+    o.connect(g); g.connect(audio.destination);
+    o.start(); o.stop(audio.currentTime + ms / 1000);
+  } catch (e) { /* sound is optional */ }
+}
+const sleep = ms => new Promise(res => timers.push(setTimeout(res, ms)));
+const status = t => { $("status").textContent = t; };
+
+// ---------------------------------------------------------------- soil and sensor model (illustrative)
+function moistureAt(mm) {                     // linear profile through the three layer mid-points
+  const pts = [[25, S.m[0]], [75, S.m[1]], [125, S.m[2]]];
+  if (mm <= 25) return S.m[0];
+  if (mm >= 125) return S.m[2];
+  const [a, b] = mm < 75 ? [pts[0], pts[1]] : [pts[1], pts[2]];
+  return a[1] + (b[1] - a[1]) * (mm - a[0]) / (b[0] - a[0]);
+}
+function electrodeZone() { return [S.depth - ELEC_HI, S.depth - ELEC_LO]; }     // depth below surface, mm
+function trueVwc() {
+  const [lo, hi] = electrodeZone(); let s = 0, n = 0;
+  for (let d = Math.max(lo, 0); d <= hi; d += 1) { s += moistureAt(d); n++; }
+  return s / n;
+}
+const gauss = () => { let u = 0, v = 0; while (!u) u = Math.random(); while (!v) v = Math.random(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v); };
+function gateFrequency() {
+  const xTrue = (trueVwc() + 0.206) / 64.222 + 0.006 * S.ec;    // soil answers with the example curve; salt adds a little
+  const x = xTrue + 0.004 * gauss();
+  return F_AIR - x * (F_AIR - F_WATER);
+}
+
+// ---------------------------------------------------------------- measureAll (sensors.cpp)
+function curve() { return S.cal === "example" && S.soil === 0 ? EXAMPLE_STD : PLACEHOLDER[S.soil]; }
+function measureAll() {
+  // UNCAL is per soil slot: AIR, WATER and a curve for the slot in use (params.cpp paramsCalibrated)
+  const r = { soil: S.soil, uncal: !(S.cal === "example" && S.soil === 0), vbat: vbatMv(), flags: [] };
+  if (r.vbat < VBAT_LOW) r.flags.push("low battery");
+  if (!$("cable").checked) { r.freq = 0; r.flags.push("probe fault"); return r; }
+  let sum = 0; for (let i = 0; i < N_AVG; i++) sum += gateFrequency();
+  r.freq = Math.round(sum / N_AVG / 16) * 16;                  // counts x 256 / 16 -> 16 Hz steps
+  r.soilT = S.soilT + 0.1 * gauss();
+  r.ec25 = Math.max(0, S.ec + 0.01 * gauss());
+  r.airT = S.airT + 0.1 * gauss(); r.rh = 38 + 2 * gauss();
+  r.x = (F_AIR - r.freq) / (F_AIR - F_WATER);                 // k_temp = 0
+  const c = curve();
+  const v = c.c[0] + c.c[1] * r.x + c.c[2] * r.x * r.x;       // k_ec = 0
+  r.vwc = Math.min(100, Math.max(0, v));
+  const v10 = Math.round(r.vwc * 10);
+  r.v10 = v10; r.t = c.t;
+  r.cls = v10 < c.t[0] ? 0 : v10 < c.t[1] ? 1 : v10 < c.t[2] ? 2 : 3;
+  r.trueVwc = trueVwc();
+  return r;
+}
+
+// ---------------------------------------------------------------- screens (soil-probe.ino)
+const f1 = (v, d) => v.toFixed(d);
+function showReading(r) {
+  oledClear();
+  if (r.flags.includes("probe fault")) { oledLine(0, "PROBE", 2); oledLine(2, "FAULT", 2); }
+  else {
+    oledLine(0, f1(r.vwc, r.vwc < 99.95 ? 1 : 0) + "%", 2);
+    if (r.uncal) oledLine(2, "UNCAL");
+    oledLine(3, CLASS_COLOUR[r.cls]); oledLine(4, CLASS_TEXT[r.cls]);
+    oledLine(6, "SOIL " + f1(r.soilT, 1) + "C"); oledLine(7, "EC " + f1(r.ec25, 2));
+    oledLine(8, "AIR " + f1(r.airT, 1) + "C"); oledLine(9, "RH " + Math.round(r.rh) + "%");
+  }
+  oledLine(11, SOILS[r.soil]);
+  oledLine(12, "BAT " + (r.vbat / 1000).toFixed(2) + "V");
+  if (r.vbat < VBAT_CRIT) oledLine(13, "CHANGE"); else if (r.vbat < VBAT_LOW) oledLine(13, "LOW");
+  oledLine(14, "NO " + S.logN);
+  oledPaint();
+}
+function headOn() { screenOn = true; oledClear(); oledPaint(); }
+function headOff() { ledsOff(); screenOn = false; oledClear(); oledPaint(); }
+
+// ---------------------------------------------------------------- readingCycle and soilTypeMenu
+let pressHandler = null;                     // set while the firmware is waiting for a press
+async function readingCycle() {
+  S.busy = true; headOn();
+  let again;
+  do {
+    again = false; ledsOff();
+    oledClear(); oledLine(7, "MEASURING"); oledPaint(); status("Measuring: 1 discarded + 8 gates of 62.5 ms, then EC, NTC, SHT40");
+    await sleep(900);
+    const r = measureAll();
+    S.logN++; S.log.unshift({ n: S.logN, ...r }); S.log = S.log.slice(0, 12);
+    showReading(r); renderTrace(r); renderLog();
+    if (r.flags.includes("low battery")) {
+      status("Low battery warning: all lights flash 3 times with low beeps");
+      for (let i = 0; i < 3; i++) { ledShowCount(4); beep(1000, 200); await sleep(200); ledsOff(); await sleep(300); }
+    }
+    if (r.flags.includes("probe fault")) {
+      status("Probe fault: lights run bottom to top 3 times, one long low beep");
+      for (let k = 0; k < 3; k++) { for (let i = 0; i < 4; i++) { ledShowClass(i); await sleep(120); } ledsOff(); await sleep(200); }
+      beep(1000, 600); await sleep(1500); break;
+    }
+    ledShowClass(r.cls); beep(2700, 80);
+    const show = $("fast").checked ? 4000 : 15000;
+    status(`${CLASS_COLOUR[r.cls]} for ${show / 1000} s. Press again for a new reading.`);
+    again = await waitPress(show);
+  } while (again);
+  headOff(); status("Asleep. Press the button."); S.busy = false;
+}
+function waitPress(ms) {
+  return new Promise(res => {
+    const t = setTimeout(() => { pressHandler = null; res(false); }, ms); timers.push(t);
+    pressHandler = () => { clearTimeout(t); pressHandler = null; res(true); };
+  });
+}
+async function soilTypeMenu() {
+  S.busy = true; headOn(); beep(2700, 80); await sleep(180); beep(2700, 80);
+  let sel = S.soil, saved = false;
+  const draw = () => { ledShowCount(sel + 1); oledClear(); oledLine(0, "SOIL", 2); oledLine(2, "TYPE", 2); oledLine(6, SOILS[sel]);
+    oledLine(11, "PRESS:"); oledLine(12, "NEXT"); oledLine(14, "HOLD 3 S:"); oledLine(15, "SAVE"); oledPaint(); };
+  draw(); status("Soil-type menu: press for next, hold 3 s to save. Lights show 1, 2 or 3.");
+  while (true) {
+    const ev = await new Promise(res => { const t = setTimeout(() => { menuHandler = null; res("timeout"); }, MENU_TIMEOUT); timers.push(t);
+      menuHandler = kind => { clearTimeout(t); menuHandler = null; res(kind); }; });
+    if (ev === "timeout") break;
+    if (ev === "hold") { S.soil = sel; saved = true; break; }
+    sel = (sel + 1) % 3; beep(2700, 40); draw();
+  }
+  ledsOff();
+  if (saved) { oledClear(); oledLine(7, "SAVED", 2); oledPaint(); for (let i = 0; i < 3; i++) { beep(2700, 80); await sleep(180); }
+    status(`Saved: ${SOILS[S.soil]}.`); await sleep(1200); }
+  else { beep(1000, 600); status("Menu closed without a change (15 s timeout)."); await sleep(1200); }
+  headOff(); renderCal(); S.busy = false;
+  if (!saved) status("Asleep. Press the button.");
+}
+let menuHandler = null;
+
+// ---------------------------------------------------------------- button: press vs 3 s hold
+let downAt = 0, holdTimer = null, holdFired = false;
+function btnDown(e) {
+  e.preventDefault(); $("push").classList.add("down"); downAt = performance.now(); holdFired = false;
+  if (audio && audio.state === "suspended") audio.resume();
+  holdTimer = setTimeout(() => {
+    holdFired = true;
+    if (menuHandler) menuHandler("hold");
+    else if (!S.busy) soilTypeMenu();
+  }, HOLD_MS);
+}
+function btnUp() {
+  if (!downAt) return;
+  $("push").classList.remove("down"); clearTimeout(holdTimer);
+  const held = performance.now() - downAt; downAt = 0;
+  if (holdFired || held < 30) return;          // 30 ms debounce
+  if (menuHandler) menuHandler("press");
+  else if (pressHandler) pressHandler();
+  else if (!S.busy) readingCycle();
+}
+const push = $("push");
+push.addEventListener("pointerdown", btnDown);
+window.addEventListener("pointerup", btnUp);
+push.addEventListener("keydown", e => { if ((e.key === " " || e.key === "Enter") && !e.repeat) btnDown(e); });
+push.addEventListener("keyup", e => { if (e.key === " " || e.key === "Enter") btnUp(); });
+
+// ---------------------------------------------------------------- trace and log
+function renderTrace(r) {
+  const tb = $("trace").tBodies[0];
+  const [lo, hi] = electrodeZone();
+  const rows = [["Electrode zone (depth)", `${Math.max(lo, 0)}–${hi} mm`], ["True soil VWC there", r.trueVwc.toFixed(1) + " %"]];
+  if (r.flags.includes("probe fault")) rows.push(["Probe frequency", "no signal"], ["Result", "PROBE FAULT, no colour"]);
+  else rows.push(
+    ["Probe frequency f", r.freq.toLocaleString("en-GB") + " Hz"],
+    ["x = (f_air − f) / (f_air − f_water)", r.x.toFixed(4)],
+    [`VWC = ${curve().c[0]} + ${curve().c[1]} x`, r.vwc.toFixed(1) + " %"],
+    ["In 0.1 % units", String(r.v10)],
+    [`Thresholds ${SOILS[r.soil]} (t_ry / t_yg / t_gb)`, r.t.join(" / ")],
+    ["Light", `<span class="chip" style="background:${CHIP[r.cls]}">${CLASS_COLOUR[r.cls]}</span>`],
+    ["Reading error", (r.vwc - r.trueVwc >= 0 ? "+" : "") + (r.vwc - r.trueVwc).toFixed(1) + " % VWC" + (r.uncal ? " (uncalibrated)" : "")]);
+  rows.push(["Battery", (r.vbat / 1000).toFixed(2) + " V" + (r.vbat < VBAT_CRIT ? " — change cells" : r.vbat < VBAT_LOW ? " — low" : "")]);
+  if (r.flags.length) rows.push(["Flags", `<span class="flag">${r.flags.join(", ")}</span>`]);
+  tb.innerHTML = rows.map(([k, v]) => `<tr><td>${k}</td><td class="v">${v}</td></tr>`).join("");
+}
+function renderLog() {
+  $("log").tBodies[0].innerHTML = S.log.map(r => `<tr><td class="v">${r.n}</td><td class="v">${r.freq ? r.freq.toLocaleString("en-GB") : "—"}</td>
+    <td class="v">${r.vwc !== undefined ? r.vwc.toFixed(1) : "—"}</td><td>${r.cls !== undefined ? `<span class="chip" style="background:${CHIP[r.cls]}">${CLASS_COLOUR[r.cls]}</span>` : "—"}</td>
+    <td>${SOILS[r.soil]}</td><td class="v">${(r.vbat / 1000).toFixed(2)}</td><td>${[r.uncal ? "uncal" : "", ...r.flags].filter(Boolean).join(", ")}</td></tr>`).join("");
+}
+
+// ---------------------------------------------------------------- soil cross-section drawing
+function drawSoil() {
+  const c = $("soil"), g = c.getContext("2d"), W = c.width, H = c.height;
+  const cs = getComputedStyle(document.documentElement);
+  const sky = cs.getPropertyValue("--panel").trim(), ink = cs.getPropertyValue("--ink").trim(), muted = cs.getPropertyValue("--muted").trim();
+  g.clearRect(0, 0, W, H);
+  const top = 90, mmPx = 1.5;                  // surface line and scale
+  g.fillStyle = sky; g.fillRect(0, 0, W, top);
+  for (let y = top; y < H; y++) {              // moisture shading: dry = pale laterite, wet = dark
+    const m = moistureAt((y - top) / mmPx), k = Math.min(1, (m - 2) / 40);
+    g.fillStyle = `rgb(${Math.round(214 - 120 * k)}, ${Math.round(150 - 95 * k)}, ${Math.round(110 - 70 * k)})`;
+    g.fillRect(0, y, W, 1);
+  }
+  g.fillStyle = "#5d8a3a";                     // maize seedling for scale
+  g.fillRect(70, top - 46, 3, 46); g.beginPath(); g.ellipse(62, top - 30, 12, 4, -0.5, 0, 7); g.ellipse(82, top - 38, 13, 4, 0.5, 0, 7); g.fill();
+  g.font = "600 13px Barlow, sans-serif"; g.fillStyle = muted;
+  [50, 100, 150].forEach(d => { const y = top + d * mmPx; g.fillStyle = "rgba(0,0,0,.25)"; g.fillRect(0, y, 18, 1);
+    g.fillStyle = "#fff"; g.fillText(d / 10 + " cm", 22, y + 4); });
+  // probe: tip at depth, fork 140 mm, housing from 50 mm above the tip
+  const x0 = 300, tipY = top + S.depth * mmPx;
+  const yAt = mmAboveTip => tipY - mmAboveTip * mmPx;
+  g.fillStyle = "#1f7a3a"; g.beginPath();      // fork board with pointed tip
+  g.moveTo(x0 - 15, yAt(50)); g.lineTo(x0 + 15, yAt(50)); g.lineTo(x0 + 15, yAt(12)); g.lineTo(x0, yAt(0)); g.lineTo(x0 - 15, yAt(12)); g.closePath(); g.fill();
+  g.fillStyle = "rgba(255, 215, 0, .85)"; g.fillRect(x0 - 4.5, yAt(ELEC_HI), 9, (ELEC_HI - ELEC_LO) * mmPx);   // sensing electrode
+  g.fillStyle = "#b9bcc2"; [-22.5, 22.5].forEach(dx => g.fillRect(x0 + dx - 2, yAt(50), 4, 30 * mmPx));          // EC pins 20-50 mm
+  g.fillStyle = "#3a3e44"; g.fillRect(x0 - 28, yAt(132), 57, (132 - 50) * mmPx);                                // probe housing
+  g.fillStyle = "#e8e8e0"; g.fillRect(x0 - 15, 0, 30, Math.max(0, yAt(132)));                                  // shaft
+  g.fillStyle = "#fff"; [[50, 1], [100, 2], [150, 3]].forEach(([d, n]) => {    // depth dots above each mark
+    for (let k = 0; k < n; k++) { g.beginPath(); g.arc(x0 + 34, yAt(d + 4 + k * 6), 2.5, 0, 7); g.fill(); } });
+  // electrode zone annotation
+  const [lo, hi] = electrodeZone();
+  g.strokeStyle = "#fff"; g.lineWidth = 1.5; g.beginPath();
+  g.moveTo(x0 + 50, top + Math.max(lo, 0) * mmPx); g.lineTo(x0 + 58, top + Math.max(lo, 0) * mmPx); g.lineTo(x0 + 58, top + hi * mmPx); g.lineTo(x0 + 50, top + hi * mmPx); g.stroke();
+  g.fillStyle = "#fff"; g.fillText("reads " + trueVwc().toFixed(1) + " %", x0 + 64, top + ((Math.max(lo, 0) + hi) / 2) * mmPx + 4);
+  g.fillStyle = ink; g.fillText("ground", 8, top - 6);
+}
+
+// ---------------------------------------------------------------- controls
+function bindRange(id, key, fmt, idx) {
+  const el = $(id), out = $(id + "o");
+  const get = () => idx === undefined ? S[key] : S[key][idx];
+  el.value = get(); out.textContent = fmt(get());
+  el.addEventListener("input", () => { const v = parseFloat(el.value); if (idx === undefined) S[key] = v; else S[key][idx] = v; out.textContent = fmt(v); drawSoil(); });
+}
+const pct = v => v.toFixed(1) + " %";
+bindRange("m1", "m", pct, 0); bindRange("m2", "m", pct, 1); bindRange("m3", "m", pct, 2);
+bindRange("st", "soilT", v => v.toFixed(1) + " °C"); bindRange("ec", "ec", v => v.toFixed(2) + " mS/cm");
+bindRange("vb", "vbat", v => v.toFixed(2) + " V"); bindRange("at", "airT", v => v.toFixed(1) + " °C");
+const PRESETS = { wet: [32, 28, 25], drying: [9, 18, 24], dry: [8, 11, 14], flooded: [42, 40, 38] };
+$("presets").addEventListener("click", e => { const p = PRESETS[e.target.dataset.p]; if (!p) return;
+  S.m = [...p]; ["m1", "m2", "m3"].forEach((id, i) => { $(id).value = S.m[i]; $(id + "o").textContent = pct(S.m[i]); }); drawSoil(); });
+function segSelect(groupId, attr, apply) {
+  const g = $(groupId);
+  g.addEventListener("click", e => { const b = e.target.closest("button"); if (!b) return; apply(b.dataset[attr]); mark(); });
+  const mark = () => g.querySelectorAll("button").forEach(b => b.setAttribute("aria-pressed", String(isOn(b.dataset[attr]))));
+  let isOn = () => false; return f => { isOn = f; mark(); };
+}
+segSelect("depth", "d", v => { S.depth = +v; drawSoil(); })(v => +v === S.depth);
+segSelect("cal", "c", v => { S.cal = v; renderCal(); })(v => v === S.cal);
+function renderCal() {
+  const c = curve();
+  $("calnote").textContent = S.cal === "example"
+    ? `Slot in use: ${SOILS[S.soil]}. ` + (S.soil === 0 ? "Worked example from calibration.md: thresholds 17.8 / 20.9 / 25.5 %." : "This slot still holds placeholders (only Standard was calibrated in the example), so the screen shows UNCAL.")
+    : `Slot in use: ${SOILS[S.soil]}. Placeholder curve VWC = ${c.c[1]} x and thresholds ${c.t.map(t => t / 10).join(" / ")} %. The screen shows UNCAL.`;
+  document.querySelectorAll("#cal button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.c === S.cal)));
+}
+renderCal();
+new MutationObserver(() => { drawSoil(); oledPaint(); }).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { drawSoil(); oledPaint(); });
+document.fonts && document.fonts.ready.then(drawSoil);
+drawSoil(); oledPaint();
+</script>
+</body>
+</html>
