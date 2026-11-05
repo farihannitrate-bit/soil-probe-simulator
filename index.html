@@ -3,509 +3,581 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Soil Probe Simulator</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap">
-<style>
-/* Layout: field bench — soil cross-section left, the device itself centre, firmware trace right; stacks on phones */
-:root {
-  --bg: #f3efe8; --panel: #fbf9f5; --ink: #2a2420; --muted: #6f655c; --line: #ddd3c6;
-  --laterite: #a4522e; --laterite-soft: #e9c7b3; --accent: #1f6f5c;
-  --asa: #3a3e44; --asa-edge: #24272b; --asa-text: #c9cdd2; --oled-bg: #05070a; --oled-px: #7fd4ff;
-  --led-blue: #2f6bff; --led-green: #1fc35a; --led-yellow: #ffc21a; --led-red: #ff3a2e;
-  --warn: #b5541c;
-  --display: "Barlow Condensed", "Arial Narrow", sans-serif;
-  --body: "Barlow", "Segoe UI", system-ui, sans-serif;
-  --mono: "JetBrains Mono", ui-monospace, Consolas, monospace;
-}
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
-  --bg: #1b1815; --panel: #24201c; --ink: #eee7de; --muted: #a99d90; --line: #3a332c;
-  --laterite: #d07a50; --laterite-soft: #4a2e22; --accent: #5cc4a6; --warn: #e48a52; color-scheme: dark } }
-:root[data-theme="dark"] {
-  --bg: #1b1815; --panel: #24201c; --ink: #eee7de; --muted: #a99d90; --line: #3a332c;
-  --laterite: #d07a50; --laterite-soft: #4a2e22; --accent: #5cc4a6; --warn: #e48a52; color-scheme: dark }
-* { box-sizing: border-box }
-body { background: var(--bg); color: var(--ink); font-family: var(--body); font-size: 15px; line-height: 1.45;
-  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 20px 40px }
-.wrap { max-width: 1240px; margin: 0 auto; display: grid; gap: 20px }
-header h1 { font-family: var(--display); font-weight: 700; font-size: clamp(28px, 4vw, 40px); letter-spacing: .01em; margin: 0; text-wrap: balance }
-header p { margin: 4px 0 0; color: var(--muted); max-width: 75ch }
-.grid { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: 20px; align-items: start }
-@media (max-width: 1020px) { .grid { grid-template-columns: minmax(0, 1fr) } .device-col { order: -1 } }
-.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; display: grid; gap: 14px; min-width: 0 }
-h2 { font-family: var(--display); font-weight: 600; font-size: 20px; margin: 0; letter-spacing: .02em }
-.label { font-family: var(--display); font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted) }
-.row { display: grid; grid-template-columns: 1fr auto; gap: 4px 10px; align-items: center }
-.row output { font-family: var(--mono); font-size: 13px; font-variant-numeric: tabular-nums }
-input[type=range] { width: 100%; grid-column: 1 / -1; accent-color: var(--laterite) }
-.seg { display: flex; flex-wrap: wrap; gap: 6px }
-.seg button, .btn { font: 600 14px var(--body); border: 1px solid var(--line); background: var(--bg); color: var(--ink);
-  padding: 6px 10px; border-radius: 6px; cursor: pointer }
-.seg button[aria-pressed="true"] { background: var(--laterite); border-color: var(--laterite); color: #fff }
-button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px }
-.check { display: flex; gap: 8px; align-items: center }
-.note { font-size: 13px; color: var(--muted) }
-canvas.soil { width: 100%; max-width: 100%; height: auto; aspect-ratio: 4 / 3; border-radius: 8px; display: block }
-
-/* the device */
-.device-col { display: grid; justify-items: center; gap: 10px }
-.head { width: 300px; max-width: 100%; background: linear-gradient(160deg, #474c53, var(--asa) 55%, #2f3237); border: 2px solid var(--asa-edge);
-  border-radius: 18px; padding: 18px 16px 22px; display: grid; grid-template-columns: auto 1fr; gap: 14px 16px; position: relative;
-  box-shadow: 0 10px 24px rgba(0,0,0,.25), inset 0 1px 0 rgba(255,255,255,.08) }
-.leds { display: grid; gap: 14px; padding-top: 26px }
-.ledrow { display: flex; align-items: center; gap: 8px }
-.led { width: 26px; height: 26px; border-radius: 50%; background: #15171a; box-shadow: inset 0 2px 4px rgba(0,0,0,.7); position: relative }
-.led::after { content: ""; position: absolute; inset: 4px; border-radius: 50%; background: var(--c); opacity: .14; transition: opacity .08s }
-.led.on::after { opacity: 1; box-shadow: 0 0 14px 6px var(--c) }
-.led.dim::after { opacity: .5; box-shadow: 0 0 6px 2px var(--c) }
-.sym { width: 22px; height: 22px; border: 1px dashed #6b7078; border-radius: 3px }
-.screenwrap { display: grid; justify-items: center; gap: 6px }
-.oled { background: var(--oled-bg); border: 6px solid #111; border-radius: 4px; image-rendering: pixelated; width: 128px; height: 256px }
-.door { grid-column: 1 / -1; border: 1px solid #555a61; border-radius: 6px; color: var(--asa-text); font: 500 11px var(--display);
-  letter-spacing: .08em; text-transform: uppercase; padding: 4px 8px; text-align: center }
-.pushwrap { grid-column: 1 / -1; display: grid; justify-items: center; gap: 4px }
-.push { width: 68px; height: 68px; border-radius: 50%; border: 3px solid #9aa0a7; background: radial-gradient(circle at 40% 35%, #e6e8ea, #a9adb2 70%);
-  cursor: pointer; box-shadow: 0 4px 0 #6d7177; touch-action: none; user-select: none; -webkit-user-select: none }
-.push:active, .push.down { transform: translateY(3px); box-shadow: 0 1px 0 #6d7177 }
-.pushhint { color: var(--asa-text); font-size: 12px; text-align: center }
-.handle { width: 40px; height: 70px; background: var(--asa); border: 2px solid var(--asa-edge); border-top: 0; border-radius: 0 0 10px 10px }
-.status { font-family: var(--mono); font-size: 13px; color: var(--muted); min-height: 1.4em; text-align: center; max-width: 300px }
-
-/* trace */
-table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums }
-td, th { padding: 4px 6px; border-bottom: 1px solid var(--line); text-align: left; font-size: 13px; vertical-align: top }
-td.v { font-family: var(--mono); white-space: nowrap; text-align: right }
-th { font: 600 12px var(--display); text-transform: uppercase; letter-spacing: .06em; color: var(--muted) }
-.scroll { overflow-x: auto }
-.chip { display: inline-block; padding: 1px 8px; border-radius: 99px; font: 600 12px var(--display); letter-spacing: .05em; color: #111 }
-.flag { color: var(--warn); font-weight: 600 }
-footer { color: var(--muted); font-size: 13px; max-width: 90ch }
-@media (prefers-reduced-motion: reduce) { .led::after { transition: none } }
-</style>
+<style>:root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}</style>
 </head>
 <body>
+<title>Soil Probe Twin</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,300..800&family=IBM+Plex+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: the 3D probe standing in a dug soil pit is the hero, lit by a modelled Harmattan day.
+   Below it, the device as the farmer sees it (lights, screen, button) beside the soil, then the firmware's working and the log. */
+:root{
+  --sky:#ece6dc; --paper:#faf7f2; --ink:#2a211b; --muted:#6c5f55; --line:#d9cfc3;
+  --laterite:#a5532c; --water:#2f6aa3; --leaf:#4d7a32; --night:rgba(42,33,27,.07);
+  --led-red:#e5322d; --led-yellow:#f2b705; --led-green:#22a24a; --led-blue:#2c6ff0; --led-off:#3a332e;
+  --font:"Archivo","Helvetica Neue",Arial,sans-serif; --mono:"IBM Plex Mono",Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --sky:#161210; --paper:#211b17; --ink:#efe7de; --muted:#b0a297; --line:#3a312a;
+  --laterite:#d98257; --water:#7fb0e6; --leaf:#93bf6d; --night:rgba(0,0,0,.3); --led-off:#4a423b; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --sky:#161210; --paper:#211b17; --ink:#efe7de; --muted:#b0a297; --line:#3a312a;
+  --laterite:#d98257; --water:#7fb0e6; --leaf:#93bf6d; --night:rgba(0,0,0,.3); --led-off:#4a423b; color-scheme:dark}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{margin:0;background:var(--sky);color:var(--ink);font:400 16px/1.5 var(--font);font-variant-numeric:tabular-nums;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:20px 48px}
+.wrap{max-width:1240px;margin:0 auto;display:grid;gap:26px}
+h1{font:780 clamp(30px,4.4vw,46px)/1.02 var(--font);font-stretch:118%;letter-spacing:-.5px;margin:0;text-wrap:balance}
+h2{font:760 24px/1.1 var(--font);font-stretch:114%;margin:0}
+h3{font:700 16px var(--font);font-stretch:110%;margin:0 0 8px}
+.intro{display:flex;flex-wrap:wrap;gap:12px 32px;justify-content:space-between;align-items:end}
+.intro p{margin:6px 0 0;color:var(--muted);max-width:68ch}
+.ctrls{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+button,select{font:500 14px var(--font);color:var(--ink);background:var(--paper);border:1px solid var(--line);border-radius:4px;padding:7px 11px;cursor:pointer}
+button:hover,select:hover{border-color:var(--laterite)}
+button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--laterite);outline-offset:2px}
+button[aria-pressed="true"]{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+
+/* hero */
+.hero{position:relative;border-radius:8px;overflow:hidden;height:clamp(380px,64vh,660px);background:#c9b896}
+.hero canvas{display:block;width:100%!important;height:100%!important;touch-action:none}
+#loading{position:absolute;inset:0;display:grid;place-items:center;color:#fff;font:500 16px var(--font);text-shadow:0 1px 3px rgba(0,0,0,.5);pointer-events:none}
+.cams{position:absolute;top:12px;right:12px;display:flex;border-radius:5px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.18)}
+.cams button{border:0;border-radius:0;border-right:1px solid #d9cfc3;background:rgba(250,247,242,.9);color:#2a211b;padding:7px 12px}
+.cams button:last-child{border-right:0}
+.cams button[aria-pressed="true"]{background:#2a211b;color:#faf7f2}
+.caption{position:absolute;left:0;right:0;bottom:0;padding:44px 18px 14px;color:#fff;background:linear-gradient(transparent,rgba(25,16,10,.66));
+  display:flex;flex-wrap:wrap;gap:4px 22px;align-items:baseline;pointer-events:none;text-shadow:0 1px 2px rgba(0,0,0,.45)}
+.caption .clock{font:700 26px var(--font);font-stretch:112%}
+.caption span{font-size:15px}
+.howto{color:var(--muted);font-size:14px;margin:-14px 0 0;max-width:92ch}
+
+/* device and soil */
+.panel{background:var(--paper);border:1px solid var(--line);border-radius:8px;padding:clamp(18px,3vw,32px);display:grid;gap:26px}
+.p-head{display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px 24px;align-items:baseline;border-bottom:1px solid var(--line);padding-bottom:14px}
+.p-head p{margin:0;color:var(--muted);font-size:14.5px}
+.device{display:grid;grid-template-columns:auto minmax(0,1fr);gap:clamp(20px,4vw,48px);align-items:start}
+@media (max-width:760px){.device{grid-template-columns:minmax(0,1fr)}}
+.face{display:grid;grid-template-columns:auto auto;gap:18px 22px;align-items:start;background:#ebe8e1;border-radius:14px;padding:22px 24px;
+  box-shadow:inset 0 0 0 1px rgba(0,0,0,.08),0 2px 6px rgba(0,0,0,.08);justify-self:start}
+.leds{display:grid;gap:10px}
+.led{display:flex;align-items:center;gap:10px;font:600 12px var(--font);letter-spacing:.06em;color:#4c4540}
+.led i{width:22px;height:22px;border-radius:50%;background:var(--led-off);box-shadow:inset 0 -2px 3px rgba(0,0,0,.4);transition:background .08s,box-shadow .08s}
+.led.on i{background:var(--c);box-shadow:0 0 14px 4px var(--c),inset 0 -2px 3px rgba(0,0,0,.2)}
+.led.dim i{background:var(--c);opacity:.45}
+#oled{width:96px;height:192px;image-rendering:pixelated;background:#05070a;border:6px solid #111;border-radius:3px;display:block}
+.push{grid-column:1/-1;justify-self:center;width:62px;height:62px;border-radius:50%;border:5px solid #9aa0a5;background:radial-gradient(#3b3f44 55%,#2b2e32);
+  box-shadow:0 3px 0 #6b7076;color:#d8dadc;font:600 11px var(--font);letter-spacing:.05em;padding:0;touch-action:none;user-select:none}
+.push.down{transform:translateY(2px);box-shadow:0 1px 0 #6b7076}
+.status{font:500 17px/1.4 var(--font);margin:0 0 14px;min-height:2.8em;max-width:52ch}
+.state{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px 26px;margin:0 0 18px}
+.state div{min-width:0;border-top:2px solid var(--ink);padding-top:6px}
+.state dt{font-size:13.5px;color:var(--muted)}
+.state dd{margin:0;font:600 21px/1.2 var(--font)}
+.state dd small{font:400 13px var(--font);color:var(--muted);display:block}
+.setup{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:14px 26px}
+.setup label,.setup .lbl{display:block;font-size:13.5px;color:var(--muted);margin-bottom:5px}
+.seg{display:flex;flex-wrap:wrap;gap:0}
+.seg button{border-radius:0;margin-left:-1px}
+.seg button:first-child{border-radius:4px 0 0 4px;margin-left:0}
+.seg button:last-child{border-radius:0 4px 4px 0}
+input[type=range]{width:100%;accent-color:var(--laterite)}
+.check{display:flex;gap:8px;align-items:center;font-size:14.5px;color:var(--ink)!important}
+.cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:26px 40px}
+.tbl{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:14px}
+th{text-align:left;font:600 12.5px var(--font);color:var(--muted);letter-spacing:.03em;border-bottom:1px solid var(--line);padding:6px 8px 6px 0}
+td{border-bottom:1px solid var(--line);padding:6px 8px 6px 0;vertical-align:top}
+td.v{font-family:var(--mono);font-size:13px;white-space:nowrap}
+.chip{display:inline-block;padding:1px 7px;border-radius:3px;color:#fff;font:600 11.5px var(--font);letter-spacing:.04em}
+.flag{color:var(--laterite);font-weight:600}
+.chart canvas{width:100%;height:190px;display:block;margin-top:6px}
+.chart h3{display:flex;flex-wrap:wrap;justify-content:space-between;gap:4px 16px}
+.chart h3 span{font:400 14px var(--font);color:var(--muted)}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:13px;color:var(--muted);margin-top:4px}
+.legend b{display:inline-block;width:14px;height:3px;vertical-align:middle;margin-right:6px;background:var(--c)}
+.fine{font-size:13px;color:var(--muted);border-top:1px solid var(--line);padding-top:12px;margin:0;max-width:100ch}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
 
 <div class="wrap">
-  <header>
-    <h1>Soil probe simulator, revision A</h1>
-    <p>Set the soil, push the probe in to a depth mark and press the button. The device runs the same steps as the revision A
-      firmware: the 5×7 font and portrait screen, frequency → x → VWC → colour with the stored parameters, the 15 s result,
-      the low-battery and probe-fault patterns, and the 3 s hold for the soil-type menu. Soil behaviour is illustrative.</p>
-  </header>
-
-  <div class="grid">
-    <!-- field -->
-    <section class="panel" aria-labelledby="h-field">
-      <h2 id="h-field">In the field</h2>
-      <canvas class="soil" id="soil" width="480" height="360" aria-label="Soil cross-section with the probe"></canvas>
-      <div>
-        <div class="label">Moisture presets</div>
-        <div class="seg" id="presets">
-          <button data-p="wet">Just watered</button><button data-p="drying">Top drying out</button>
-          <button data-p="dry">Dry, needs water</button><button data-p="flooded">Waterlogged</button>
-        </div>
-      </div>
-      <div class="row"><label for="m1">Soil moisture 0–5 cm</label><output id="m1o"></output><input id="m1" type="range" min="2" max="45" step="0.5"></div>
-      <div class="row"><label for="m2">5–10 cm</label><output id="m2o"></output><input id="m2" type="range" min="2" max="45" step="0.5"></div>
-      <div class="row"><label for="m3">10–15 cm</label><output id="m3o"></output><input id="m3" type="range" min="2" max="45" step="0.5"></div>
-      <div>
-        <div class="label">Push in to the mark</div>
-        <div class="seg" id="depth" role="group" aria-label="Insertion depth">
-          <button data-d="50">5 cm (1 dot)</button><button data-d="100">10 cm (2 dots)</button><button data-d="150">15 cm (3 dots)</button>
-        </div>
-      </div>
-      <div class="row"><label for="st">Soil temperature</label><output id="sto"></output><input id="st" type="range" min="15" max="45" step="0.5"></div>
-      <div class="row"><label for="ec">Soil salinity (EC at 25 °C)</label><output id="eco"></output><input id="ec" type="range" min="0" max="4" step="0.05"></div>
-    </section>
-
-    <!-- device -->
-    <section class="device-col" aria-label="The device">
-      <div class="head">
-        <div class="leds" aria-label="Lights, blue at the top">
-          <div class="ledrow"><div class="led" id="L3" style="--c: var(--led-blue)"></div><div class="sym" title="symbol chosen with the farmers"></div></div>
-          <div class="ledrow"><div class="led" id="L2" style="--c: var(--led-green)"></div><div class="sym"></div></div>
-          <div class="ledrow"><div class="led" id="L1" style="--c: var(--led-yellow)"></div><div class="sym"></div></div>
-          <div class="ledrow"><div class="led" id="L0" style="--c: var(--led-red)"></div><div class="sym"></div></div>
-        </div>
-        <div class="screenwrap"><canvas class="oled" id="oled" width="64" height="128" aria-label="OLED screen, portrait"></canvas></div>
-        <div class="door">Battery and service door · 4 × AA</div>
-        <div class="pushwrap">
-          <div class="push" id="push" role="button" tabindex="0" aria-label="Push button: press to measure, hold 3 s for the soil-type menu"></div>
-          <div class="pushhint">Press to measure · hold 3 s: soil type</div>
-        </div>
-      </div>
-      <div class="handle" aria-hidden="true"></div>
-      <div class="status" id="status" aria-live="polite">Asleep. Press the button.</div>
-    </section>
-
-    <!-- firmware -->
-    <section class="panel" aria-labelledby="h-fw">
-      <h2 id="h-fw">Inside the firmware</h2>
-      <div>
-        <div class="label">Stored calibration</div>
-        <div class="seg" id="cal" role="group" aria-label="Calibration">
-          <button data-c="placeholder">As flashed (placeholders)</button><button data-c="example">Example calibration</button>
-        </div>
-        <p class="note" id="calnote"></p>
-      </div>
-      <div class="row"><label for="vb">Battery voltage (4 × AA)</label><output id="vbo"></output><input id="vb" type="range" min="3.6" max="6.4" step="0.05"></div>
-      <div class="row"><label for="at">Air temperature</label><output id="ato"></output><input id="at" type="range" min="15" max="45" step="0.5"></div>
-      <label class="check"><input type="checkbox" id="cable" checked> Probe cable connected</label>
-      <label class="check"><input type="checkbox" id="fast"> Fast time (15 s result shown for 4 s)</label>
-      <label class="check"><input type="checkbox" id="sound" checked> Sound (piezo 2.7 kHz, low tones 1 kHz)</label>
-      <div class="scroll"><table id="trace" aria-label="Last measurement"><tbody><tr><td>No reading yet.</td></tr></tbody></table></div>
-      <div>
-        <div class="label">Log in the 24LC512 (newest first)</div>
-        <div class="scroll"><table id="log"><thead><tr><th>No</th><th>Freq Hz</th><th>VWC %</th><th>Class</th><th>Soil</th><th>Bat V</th><th>Flags</th></tr></thead><tbody></tbody></table></div>
-      </div>
-    </section>
+  <div class="intro">
+    <div>
+      <h1>Soil Probe Twin</h1>
+      <p>The probe's own printed parts, pushed into a hand-watered maize plot near Tamale on a modelled Harmattan day. The lights, screen and button run the revision A firmware logic; the soil dries in the sun and wets when you pour a bucket.</p>
+    </div>
+    <div class="ctrls">
+      <button id="pour">Pour a bucket here</button>
+      <select id="speed" aria-label="Clock speed">
+        <option value="1">Real time</option><option value="60" selected>1 minute per second</option><option value="600">10 minutes per second</option><option value="3600">1 hour per second</option>
+      </select>
+      <button id="run">Pause</button>
+    </div>
   </div>
 
-  <footer>
-    Firmware values: f_air 500 kHz, f_water 100 kHz, 8 gates averaged, k_temp = k_ec = 0, ec_kcell 1, low battery 4.40 V, very low 4.10 V,
-    display 15 s, menu timeout 15 s. "Example calibration" loads the worked example from <code>docs/calibration.md</code>
-    (Standard: VWC = −0.206 + 64.222 x, thresholds 17.8 / 20.9 / 25.5 %); Clay and Sand keep placeholders and show UNCAL.
-    The simulated soil answers with that example curve plus a small salinity effect and reading noise, so readings are illustrative, not measured.
-    Below 4.1 V blue and green are drawn dim (brightness TO VERIFY).
-  </footer>
+  <div class="hero" id="view">
+    <div id="loading">Loading the printed parts</div>
+    <div class="cams" role="group" aria-label="Camera">
+      <button data-cam="plot" aria-pressed="true">Plot</button><button data-cam="head">Head</button><button data-cam="pit">Soil pit</button>
+    </div>
+    <div class="caption"><span class="clock" id="h-time"></span><span id="h-sun"></span><span id="h-soil"></span></div>
+  </div>
+  <p class="howto">Drag to look around, scroll to zoom. Click the black button on the head (or the one below) for a reading; hold it 3 seconds for the soil-type menu. A pit is dug in front of the probe so you can see the fork and the soil it reads, darker where it is wetter. Mast-free and to scale: the probe is 633 mm long.</p>
+
+  <section class="panel" aria-label="Device">
+    <div class="p-head"><h2>Probe 07, in the field</h2><p id="p-sub"></p></div>
+    <div class="device">
+      <div class="face" aria-label="Device face">
+        <div class="leds" role="group" aria-label="Result lights, blue at the top">
+          <div class="led" id="L3" style="--c:var(--led-blue)"><i></i>BLUE</div>
+          <div class="led" id="L2" style="--c:var(--led-green)"><i></i>GREEN</div>
+          <div class="led" id="L1" style="--c:var(--led-yellow)"><i></i>YELLOW</div>
+          <div class="led" id="L0" style="--c:var(--led-red)"><i></i>RED</div>
+        </div>
+        <canvas id="oled" width="64" height="128" aria-label="Device screen"></canvas>
+        <button class="push" id="push" aria-label="Device button: press for a reading, hold 3 s for the soil-type menu">PRESS</button>
+      </div>
+      <div style="min-width:0">
+        <p class="status" id="status" aria-live="polite">Asleep. Press the button.</p>
+        <dl class="state">
+          <div><dt>Soil it reads</dt><dd id="k-true"></dd></div>
+          <div><dt>Top 5 cm</dt><dd id="k-top"></dd></div>
+          <div><dt>Air</dt><dd id="k-air"></dd></div>
+          <div><dt>Water today</dt><dd id="k-water"></dd></div>
+        </dl>
+        <div class="setup">
+          <div><span class="lbl">Pushed in to the mark</span><div class="seg" id="depth" role="group" aria-label="Insertion depth">
+            <button data-v="50">5 cm</button><button data-v="100" aria-pressed="true">10 cm</button><button data-v="150">15 cm</button></div></div>
+          <div><span class="lbl">Soil in this plot</span><div class="seg" id="field" role="group" aria-label="Soil in the plot">
+            <button data-v="0" aria-pressed="true">Loam</button><button data-v="1">Clay</button><button data-v="2">Sand</button></div></div>
+          <div><span class="lbl">Calibration on the device</span><div class="seg" id="cal" role="group" aria-label="Calibration">
+            <button data-v="placeholder">Placeholder</button><button data-v="example" aria-pressed="true">UENR example</button></div></div>
+          <div><label for="vbat">Batteries: <b id="vbat-v"></b></label><input type="range" id="vbat" min="3.8" max="6.4" step="0.05" value="6.2"></div>
+          <div><span class="lbl">Probe and sound</span>
+            <label class="check"><input type="checkbox" id="cable" checked> Probe cable connected</label>
+            <label class="check"><input type="checkbox" id="sound" checked> Beeps (piezo 2.7 kHz, low tones 1 kHz)</label>
+            <label class="check"><input type="checkbox" id="fast"> Fast time (15 s result shown for 4 s)</label></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="chart">
+      <h3>Soil water over 48 hours <span id="c-sum"></span></h3>
+      <canvas id="chart" aria-label="Soil water chart"></canvas>
+      <div class="legend"><span style="--c:#c98a5f"><b></b>0–5 cm</span><span style="--c:var(--laterite)"><b></b>5–10 cm</span><span style="--c:var(--ink)"><b></b>10–15 cm</span>
+        <span>Dots: device readings, coloured by the light shown. Bands: the device's thresholds for its soil slot.</span></div>
+    </div>
+
+    <div class="cols">
+      <div><h3>Inside the firmware, last reading</h3><div class="tbl"><table id="trace"><tbody><tr><td>No reading yet.</td></tr></tbody></table></div></div>
+      <div><h3>Log, newest first</h3><div class="tbl"><table id="log"><thead><tr><th>No.</th><th>Time</th><th>Hz</th><th>VWC %</th><th>Light</th><th>Flags</th></tr></thead><tbody></tbody></table></div></div>
+    </div>
+    <p class="fine">Modelled soil and weather, not measurements. Soil water uses a three-layer bucket model with illustrative field capacity, wilting point and drainage for each soil, and about 4.5 mm/day of crop water use in the Harmattan. The "UENR example" calibration is the synthetic worked example from docs/calibration.md, not a fitted curve. Firmware logic follows soil-probe.ino, sensors.cpp, ui.cpp and oled.cpp revision A: f_air 500 kHz, f_water 100 kHz, 8 gates averaged, k_temp = k_ec = 0, low battery 4.40 V, very low 4.10 V (blue and green drawn dim below it, brightness TO VERIFY), display 15 s, menu timeout 15 s. With the UENR example only the Standard slot is calibrated (VWC = −0.206 + 64.222 x, thresholds 17.8 / 20.9 / 25.5 %); Clay and Sand keep placeholders and show UNCAL.</p>
+  </section>
 </div>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/STLLoader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
 <script>
 "use strict";
+const $=id=>document.getElementById(id);
+const css=v=>getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const T0=Date.UTC(2027,0,14,0,0,0);        // 14 January 2027, Ghana keeps GMT
+
 // ---------------------------------------------------------------- firmware constants (config.h, params defaults)
-const F_AIR = 500000, F_WATER = 100000, N_AVG = 8, VBAT_LOW = 4400, VBAT_CRIT = 4100, MENU_TIMEOUT = 15000, HOLD_MS = 3000;
-const SOILS = ["STANDARD", "CLAY", "SAND"];
-const PLACEHOLDER = [ { c: [0, 50, 0], t: [120, 200, 320] }, { c: [0, 55, 0], t: [200, 280, 400] }, { c: [0, 40, 0], t: [60, 100, 180] } ];
-const EXAMPLE_STD = { c: [-0.206, 64.222, 0], t: [178, 209, 255] };
-const CLASS_COLOUR = ["RED", "YELLOW", "GREEN", "BLUE"], CLASS_TEXT = ["DRY", "MODERATE", "ADEQUATE", "VERY WET"];
-const CHIP = ["var(--led-red)", "var(--led-yellow)", "var(--led-green)", "var(--led-blue)"];
-// electrode 13-49 mm from the point (fork_pcb.py)
-const ELEC_LO = 13, ELEC_HI = 49;
+const F_AIR=500000,F_WATER=100000,N_AVG=8,VBAT_LOW=4400,VBAT_CRIT=4100,MENU_TIMEOUT=15000,HOLD_MS=3000,DISPLAY_MS=15000;
+const SOILS=["STANDARD","CLAY","SAND"];
+const PLACEHOLDER=[{c:[0,50,0],t:[120,200,320]},{c:[0,55,0],t:[200,280,400]},{c:[0,40,0],t:[60,100,180]}];
+const EXAMPLE_STD={c:[-0.206,64.222,0],t:[178,209,255]};
+const CLASS_COLOUR=["RED","YELLOW","GREEN","BLUE"],CLASS_TEXT=["DRY","MODERATE","ADEQUATE","VERY WET"];
+const CHIP=["var(--led-red)","var(--led-yellow)","var(--led-green)","var(--led-blue)"];
+const LED_HEX=[0xe5322d,0xf2b705,0x22a24a,0x2c6ff0];
+const ELEC_LO=13,ELEC_HI=49;                // sensing electrode, mm from the point (fork_pcb.py)
+const FONT=[[0,0,0,0,0],[0,0,95,0,0],[0,7,0,7,0],[20,127,20,127,20],[36,42,127,42,18],[35,19,8,100,98],[54,73,86,32,80],[0,8,7,3,0],[0,28,34,65,0],[0,65,34,28,0],
+ [42,28,127,28,42],[8,8,62,8,8],[0,80,48,0,0],[8,8,8,8,8],[0,96,96,0,0],[32,16,8,4,2],[62,81,73,69,62],[0,66,127,64,0],[114,73,73,73,70],[33,65,73,77,51],
+ [24,20,18,127,16],[39,69,69,69,57],[60,74,73,73,49],[65,33,17,9,7],[54,73,73,73,54],[70,73,73,41,30],[0,54,54,0,0],[0,86,54,0,0],[8,20,34,65,0],[20,20,20,20,20],
+ [0,65,34,20,8],[2,1,89,9,6],[62,65,93,89,78],[124,18,17,18,124],[127,73,73,73,54],[62,65,65,65,34],[127,65,65,65,62],[127,73,73,73,65],[127,9,9,9,1],[62,65,65,81,115],
+ [127,8,8,8,127],[0,65,127,65,0],[32,64,65,63,1],[127,8,20,34,65],[127,64,64,64,64],[127,2,28,2,127],[127,4,8,16,127],[62,65,65,65,62],[127,9,9,9,6],[62,65,81,33,94],
+ [127,9,25,41,70],[38,73,73,73,50],[3,1,127,1,3],[63,64,64,64,63],[31,32,64,32,31],[63,64,56,64,63],[99,20,8,20,99],[3,4,120,4,3],[97,89,73,77,67]];
 
-// 5 x 7 font, ASCII 0x20-0x5A, one byte per column, bit 0 at the top (oled.cpp)
-const FONT = [
-  [0x00,0x00,0x00,0x00,0x00],[0x00,0x00,0x5F,0x00,0x00],[0x00,0x07,0x00,0x07,0x00],[0x14,0x7F,0x14,0x7F,0x14],[0x24,0x2A,0x7F,0x2A,0x12],
-  [0x23,0x13,0x08,0x64,0x62],[0x36,0x49,0x56,0x20,0x50],[0x00,0x08,0x07,0x03,0x00],[0x00,0x1C,0x22,0x41,0x00],[0x00,0x41,0x22,0x1C,0x00],
-  [0x2A,0x1C,0x7F,0x1C,0x2A],[0x08,0x08,0x3E,0x08,0x08],[0x00,0x50,0x30,0x00,0x00],[0x08,0x08,0x08,0x08,0x08],[0x00,0x60,0x60,0x00,0x00],
-  [0x20,0x10,0x08,0x04,0x02],[0x3E,0x51,0x49,0x45,0x3E],[0x00,0x42,0x7F,0x40,0x00],[0x72,0x49,0x49,0x49,0x46],[0x21,0x41,0x49,0x4D,0x33],
-  [0x18,0x14,0x12,0x7F,0x10],[0x27,0x45,0x45,0x45,0x39],[0x3C,0x4A,0x49,0x49,0x31],[0x41,0x21,0x11,0x09,0x07],[0x36,0x49,0x49,0x49,0x36],
-  [0x46,0x49,0x49,0x29,0x1E],[0x00,0x36,0x36,0x00,0x00],[0x00,0x56,0x36,0x00,0x00],[0x08,0x14,0x22,0x41,0x00],[0x14,0x14,0x14,0x14,0x14],
-  [0x00,0x41,0x22,0x14,0x08],[0x02,0x01,0x59,0x09,0x06],[0x3E,0x41,0x5D,0x59,0x4E],[0x7C,0x12,0x11,0x12,0x7C],[0x7F,0x49,0x49,0x49,0x36],
-  [0x3E,0x41,0x41,0x41,0x22],[0x7F,0x41,0x41,0x41,0x3E],[0x7F,0x49,0x49,0x49,0x41],[0x7F,0x09,0x09,0x09,0x01],[0x3E,0x41,0x41,0x51,0x73],
-  [0x7F,0x08,0x08,0x08,0x7F],[0x00,0x41,0x7F,0x41,0x00],[0x20,0x40,0x41,0x3F,0x01],[0x7F,0x08,0x14,0x22,0x41],[0x7F,0x40,0x40,0x40,0x40],
-  [0x7F,0x02,0x1C,0x02,0x7F],[0x7F,0x04,0x08,0x10,0x7F],[0x3E,0x41,0x41,0x41,0x3E],[0x7F,0x09,0x09,0x09,0x06],[0x3E,0x41,0x51,0x21,0x5E],
-  [0x7F,0x09,0x19,0x29,0x46],[0x26,0x49,0x49,0x49,0x32],[0x03,0x01,0x7F,0x01,0x03],[0x3F,0x40,0x40,0x40,0x3F],[0x1F,0x20,0x40,0x20,0x1F],
-  [0x3F,0x40,0x38,0x40,0x3F],[0x63,0x14,0x08,0x14,0x63],[0x03,0x04,0x78,0x04,0x03],[0x61,0x59,0x49,0x4D,0x43] ];
-
-// ---------------------------------------------------------------- state
-const $ = id => document.getElementById(id);
-const S = { m: [30, 26, 24], depth: 100, soilT: 31, ec: 0.3, vbat: 6.2, airT: 34, cal: "placeholder", soil: 0,
-  logN: 0, log: [], busy: false };
-let screenOn = false, timers = [], audio = null;
-const ram = new Uint8Array(8 * 128);          // SSD1306 page memory: 8 pages x 128 columns
-
-// ---------------------------------------------------------------- OLED driver (oled.cpp oledLine, portrait)
-function glyphColumn(ch, col) {
-  if (col >= 5) return 0;
-  ch = ch.toUpperCase();
-  if (ch < " " || ch > "Z") ch = "?";
-  return FONT[ch.charCodeAt(0) - 32][col];
+// ---------------------------------------------------------------- soil water model (illustrative)
+// Three 50 mm layers, VWC in %. 1 mm of water in a 50 mm layer = 2 % VWC.
+const SOILP=[{name:"loam",fc:30,wp:12,sat:45,k:1/3},{name:"clay",fc:38,wp:20,sat:50,k:1/12},{name:"sand",fc:15,wp:5,sat:38,k:1}];
+const S={t:0,m:[22,25,26],depth:100,field:0,soilSlot:0,cal:"example",vbat:6.2,poured:[],logN:0,log:[],hist:[],busy:false,pouring:0};
+const ET_DAY=4.5;                           // crop water use, mm/day, Harmattan maize (illustrative)
+function sun(h){return Math.max(0,Math.sin(Math.PI*(h-6.25)/11.6));}
+function air(h){const ph=Math.max(0,Math.sin(Math.PI*(h-7)/14));return{T:19+18*Math.pow(h>=7&&h<=21?ph:0,0.85)-(h<7?1.2*h/7:0),RH:48-32*(h>=7&&h<=21?ph:0)};}
+function stepSoil(dt){                      // dt in seconds
+  const p=SOILP[S.field],h=(S.t/3600)%24,m=S.m;
+  const et=ET_DAY*sun(h)/(11.6*2/Math.PI)*dt/3600;      // mm this step
+  const w=[0.45,0.35,0.2];
+  for(let i=0;i<3;i++){const avail=Math.max(0,Math.min(1,(m[i]-p.wp)/((p.fc-p.wp)*0.6)));m[i]-=2*et*w[i]*avail*(i===0?1.15:1);}
+  for(let i=0;i<3;i++){const ex=m[i]-p.fc;if(ex>0){const q=Math.min(ex,ex*p.k*dt/3600);m[i]-=q;if(i<2)m[i+1]+=q;}}
+  for(let i=0;i<2;i++){const d=(m[i]-m[i+1])*dt/3600/30;m[i]-=d;m[i+1]+=d;}           // slow redistribution
+  for(let i=0;i<3;i++){if(m[i]>p.sat){if(i<2)m[i+1]+=m[i]-p.sat;m[i]=p.sat;}m[i]=Math.max(p.wp*0.55,m[i]);}
+  S.t+=dt;
 }
-function oledClear() { ram.fill(0); }
-function oledLine(row, s, size = 1) {
-  const pitch = size === 2 ? 12 : 6, height = size === 2 ? 16 : 8;
-  if (row * 8 + height > 128) return;
-  const len = Math.min(s.length, Math.floor(64 / pitch));
-  for (let page = 0; page < 8; page++)
-    for (let v = 0; v < height; v++) {
-      const bit = size === 2 ? v >> 1 : v;
-      let b = 0;
-      for (let k = 0; k < 8; k++) {
-        const u = page * 8 + k, ci = Math.floor(u / pitch);
-        if (ci < len && (glyphColumn(s[ci], Math.floor((u % pitch) / size)) >> bit & 1)) b |= 1 << k;
-      }
-      ram[page * 128 + row * 8 + v] = b;
-    }
+function pour(mm){                          // one 10 L bucket over about 0.5 m2 = 20 mm
+  const p=SOILP[S.field];let left=mm*2;
+  for(let i=0;i<3&&left>0;i++){const room=p.sat-S.m[i];const a=Math.min(room,left);S.m[i]+=a;left-=a;}
+  S.poured.push(S.t);
 }
-function oledPaint() {
-  const c = $("oled"), g = c.getContext("2d");
-  const img = g.createImageData(64, 128);
-  const px = getComputedStyle(document.documentElement).getPropertyValue("--oled-px").trim() || "#7fd4ff";
-  const [r, gg, b] = [1, 3, 5].map(i => parseInt(px.slice(i, i + 2), 16));
-  for (let v = 0; v < 128; v++) for (let u = 0; u < 64; u++) {
-    const on = screenOn && (ram[(u >> 3) * 128 + v] >> (u & 7) & 1);
-    const i = (v * 64 + u) * 4;
-    img.data[i] = on ? r : 5; img.data[i + 1] = on ? gg : 7; img.data[i + 2] = on ? b : 10; img.data[i + 3] = 255;
-  }
-  g.putImageData(img, 0, 0);
+function moistureAt(mm){
+  const pts=[[25,S.m[0]],[75,S.m[1]],[125,S.m[2]],[240,S.m[2]+2]];
+  if(mm<=25)return S.m[0];
+  for(let i=0;i<3;i++){const[a,b]=[pts[i],pts[i+1]];if(mm<=b[0])return a[1]+(b[1]-a[1])*(mm-a[0])/(b[0]-a[0]);}
+  return pts[3][1];
+}
+const zone=()=>[Math.max(0,S.depth-ELEC_HI),S.depth-ELEC_LO];
+function trueVwc(){const[lo,hi]=zone();let s=0,n=0;for(let d=lo;d<=hi;d++){s+=moistureAt(d);n++;}return s/n;}
+const gauss=()=>{let u=0,v=0;while(!u)u=Math.random();while(!v)v=Math.random();return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v);};
+function soilTemp(){const h=(S.t/3600)%24,d=S.depth/1000;return 27+7*Math.exp(-d/0.08)*Math.sin(2*Math.PI*(h-9-d*60)/24);}
+
+// ---------------------------------------------------------------- OLED (oled.cpp oledLine, portrait 64 x 128)
+const ram=new Uint8Array(8*128);let screenOn=false,oledDirty=true;
+function glyphColumn(ch,col){if(col>=5)return 0;ch=ch.toUpperCase();if(ch<" "||ch>"Z")ch="?";return FONT[ch.charCodeAt(0)-32][col];}
+function oledClear(){ram.fill(0);oledDirty=true;}
+function oledLine(row,s,size=1){
+  const pitch=size===2?12:6,height=size===2?16:8;if(row*8+height>128)return;
+  const len=Math.min(s.length,Math.floor(64/pitch));
+  for(let page=0;page<8;page++)for(let v=0;v<height;v++){const bit=size===2?v>>1:v;let b=0;
+    for(let k=0;k<8;k++){const u=page*8+k,ci=Math.floor(u/pitch);if(ci<len&&(glyphColumn(s[ci],Math.floor((u%pitch)/size))>>bit&1))b|=1<<k;}
+    ram[page*128+row*8+v]=b;}
+  oledDirty=true;
+}
+const oledCanvas=document.createElement("canvas");oledCanvas.width=64;oledCanvas.height=128;
+function oledPaint(){
+  for(const c of [$("oled"),oledCanvas]){const g=c.getContext("2d"),img=g.createImageData(64,128);
+    for(let v=0;v<128;v++)for(let u=0;u<64;u++){const on=screenOn&&(ram[(u>>3)*128+v]>>(u&7)&1),i=(v*64+u)*4;
+      img.data[i]=on?140:4;img.data[i+1]=on?215:6;img.data[i+2]=on?255:9;img.data[i+3]=255;}
+    g.putImageData(img,0,0);}
+  if(oledTex)oledTex.needsUpdate=true;oledDirty=false;
 }
 
 // ---------------------------------------------------------------- lights and sound (ui.cpp)
-const vbatMv = () => Math.round(S.vbat * 1000);
-function ledsOff() { for (let i = 0; i < 4; i++) $("L" + i).className = "led"; }
-function ledShow(onMask) {
-  for (let i = 0; i < 4; i++) {
-    const dimmed = (i === 2 || i === 3) && vbatMv() < VBAT_CRIT;   // blue and green dim below 4.1 V (TO VERIFY)
-    $("L" + i).className = "led" + (onMask[i] ? (dimmed ? " dim" : " on") : "");
-  }
-}
-const ledShowClass = c => ledShow([0, 1, 2, 3].map(i => i === c));
-const ledShowCount = n => ledShow([0, 1, 2, 3].map(i => i < n));
-function beep(hz, ms) {
-  if (!$("sound").checked) return;
-  try {
-    audio = audio || new (window.AudioContext || window.webkitAudioContext)();
-    const o = audio.createOscillator(), g = audio.createGain();
-    o.type = "square"; o.frequency.value = hz; g.gain.value = 0.04;
-    o.connect(g); g.connect(audio.destination);
-    o.start(); o.stop(audio.currentTime + ms / 1000);
-  } catch (e) { /* sound is optional */ }
-}
-const sleep = ms => new Promise(res => timers.push(setTimeout(res, ms)));
-const status = t => { $("status").textContent = t; };
+let ledState=[0,0,0,0];                     // 0 off, 1 on, 0.45 dim
+const vbatMv=()=>Math.round(S.vbat*1000);
+function ledShow(mask){for(let i=0;i<4;i++){const dim=(i>=2)&&vbatMv()<VBAT_CRIT;ledState[i]=mask[i]?(dim?0.45:1):0;
+  $("L"+i).className="led"+(mask[i]?(dim?" dim":" on"):"");}}
+const ledsOff=()=>ledShow([0,0,0,0]);
+const ledShowClass=c=>ledShow([0,1,2,3].map(i=>i===c));
+const ledShowCount=n=>ledShow([0,1,2,3].map(i=>i<n));
+let audio=null;
+function beep(hz,ms){if(!$("sound").checked||!audio)return;try{const o=audio.createOscillator(),g=audio.createGain();
+  o.type="square";o.frequency.value=hz;g.gain.value=0.035;o.connect(g);g.connect(audio.destination);o.start();o.stop(audio.currentTime+ms/1000);}catch(e){}}
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+const status=t=>{$("status").textContent=t;};
 
-// ---------------------------------------------------------------- soil and sensor model (illustrative)
-function moistureAt(mm) {                     // linear profile through the three layer mid-points
-  const pts = [[25, S.m[0]], [75, S.m[1]], [125, S.m[2]]];
-  if (mm <= 25) return S.m[0];
-  if (mm >= 125) return S.m[2];
-  const [a, b] = mm < 75 ? [pts[0], pts[1]] : [pts[1], pts[2]];
-  return a[1] + (b[1] - a[1]) * (mm - a[0]) / (b[0] - a[0]);
-}
-function electrodeZone() { return [S.depth - ELEC_HI, S.depth - ELEC_LO]; }     // depth below surface, mm
-function trueVwc() {
-  const [lo, hi] = electrodeZone(); let s = 0, n = 0;
-  for (let d = Math.max(lo, 0); d <= hi; d += 1) { s += moistureAt(d); n++; }
-  return s / n;
-}
-const gauss = () => { let u = 0, v = 0; while (!u) u = Math.random(); while (!v) v = Math.random(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v); };
-function gateFrequency() {
-  const xTrue = (trueVwc() + 0.206) / 64.222 + 0.006 * S.ec;    // soil answers with the example curve; salt adds a little
-  const x = xTrue + 0.004 * gauss();
-  return F_AIR - x * (F_AIR - F_WATER);
-}
-
-// ---------------------------------------------------------------- measureAll (sensors.cpp)
-function curve() { return S.cal === "example" && S.soil === 0 ? EXAMPLE_STD : PLACEHOLDER[S.soil]; }
-function measureAll() {
-  // UNCAL is per soil slot: AIR, WATER and a curve for the slot in use (params.cpp paramsCalibrated)
-  const r = { soil: S.soil, uncal: !(S.cal === "example" && S.soil === 0), vbat: vbatMv(), flags: [] };
-  if (r.vbat < VBAT_LOW) r.flags.push("low battery");
-  if (!$("cable").checked) { r.freq = 0; r.flags.push("probe fault"); return r; }
-  let sum = 0; for (let i = 0; i < N_AVG; i++) sum += gateFrequency();
-  r.freq = Math.round(sum / N_AVG / 16) * 16;                  // counts x 256 / 16 -> 16 Hz steps
-  r.soilT = S.soilT + 0.1 * gauss();
-  r.ec25 = Math.max(0, S.ec + 0.01 * gauss());
-  r.airT = S.airT + 0.1 * gauss(); r.rh = 38 + 2 * gauss();
-  r.x = (F_AIR - r.freq) / (F_AIR - F_WATER);                 // k_temp = 0
-  const c = curve();
-  const v = c.c[0] + c.c[1] * r.x + c.c[2] * r.x * r.x;       // k_ec = 0
-  r.vwc = Math.min(100, Math.max(0, v));
-  const v10 = Math.round(r.vwc * 10);
-  r.v10 = v10; r.t = c.t;
-  r.cls = v10 < c.t[0] ? 0 : v10 < c.t[1] ? 1 : v10 < c.t[2] ? 2 : 3;
-  r.trueVwc = trueVwc();
+// ---------------------------------------------------------------- measureAll (sensors.cpp) with the soil above
+const curve=()=>S.cal==="example"&&S.soilSlot===0?EXAMPLE_STD:PLACEHOLDER[S.soilSlot];
+function gateFrequency(tv){const x=(tv+0.206)/64.222+0.004*gauss();return F_AIR-x*(F_AIR-F_WATER);}
+function measureAll(){
+  const r={time:S.t,soil:S.soilSlot,uncal:curve()!==EXAMPLE_STD,vbat:vbatMv(),flags:[]};
+  if(r.vbat<VBAT_LOW)r.flags.push("low battery");
+  if(!$("cable").checked){r.freq=0;r.flags.push("probe fault");return r;}
+  r.trueVwc=trueVwc();
+  let sum=0;for(let i=0;i<N_AVG;i++)sum+=gateFrequency(r.trueVwc);
+  r.freq=Math.round(sum/N_AVG/16)*16;
+  r.soilT=soilTemp()+0.1*gauss();const a=air((S.t/3600)%24);r.airT=a.T+0.1*gauss();r.rh=a.RH+gauss();r.ec25=Math.max(0,0.18+0.01*gauss());
+  r.x=(F_AIR-r.freq)/(F_AIR-F_WATER);const c=curve();
+  r.vwc=Math.min(100,Math.max(0,c.c[0]+c.c[1]*r.x+c.c[2]*r.x*r.x));
+  r.v10=Math.round(r.vwc*10);r.t=c.t;r.cls=r.v10<c.t[0]?0:r.v10<c.t[1]?1:r.v10<c.t[2]?2:3;
   return r;
 }
-
-// ---------------------------------------------------------------- screens (soil-probe.ino)
-const f1 = (v, d) => v.toFixed(d);
-function showReading(r) {
+const f1=(v,d)=>v.toFixed(d);
+function showReading(r){
   oledClear();
-  if (r.flags.includes("probe fault")) { oledLine(0, "PROBE", 2); oledLine(2, "FAULT", 2); }
-  else {
-    oledLine(0, f1(r.vwc, r.vwc < 99.95 ? 1 : 0) + "%", 2);
-    if (r.uncal) oledLine(2, "UNCAL");
-    oledLine(3, CLASS_COLOUR[r.cls]); oledLine(4, CLASS_TEXT[r.cls]);
-    oledLine(6, "SOIL " + f1(r.soilT, 1) + "C"); oledLine(7, "EC " + f1(r.ec25, 2));
-    oledLine(8, "AIR " + f1(r.airT, 1) + "C"); oledLine(9, "RH " + Math.round(r.rh) + "%");
-  }
-  oledLine(11, SOILS[r.soil]);
-  oledLine(12, "BAT " + (r.vbat / 1000).toFixed(2) + "V");
-  if (r.vbat < VBAT_CRIT) oledLine(13, "CHANGE"); else if (r.vbat < VBAT_LOW) oledLine(13, "LOW");
-  oledLine(14, "NO " + S.logN);
-  oledPaint();
+  if(r.flags.includes("probe fault")){oledLine(0,"PROBE",2);oledLine(2,"FAULT",2);}
+  else{oledLine(0,f1(r.vwc,r.vwc<99.95?1:0)+"%",2);if(r.uncal)oledLine(2,"UNCAL");
+    oledLine(3,CLASS_COLOUR[r.cls]);oledLine(4,CLASS_TEXT[r.cls]);
+    oledLine(6,"SOIL "+f1(r.soilT,1)+"C");oledLine(7,"EC "+f1(r.ec25,2));oledLine(8,"AIR "+f1(r.airT,1)+"C");oledLine(9,"RH "+Math.round(r.rh)+"%");}
+  oledLine(11,SOILS[r.soil]);oledLine(12,"BAT "+(r.vbat/1000).toFixed(2)+"V");
+  if(r.vbat<VBAT_CRIT)oledLine(13,"CHANGE");else if(r.vbat<VBAT_LOW)oledLine(13,"LOW");
+  oledLine(14,"NO "+S.logN);
 }
-function headOn() { screenOn = true; oledClear(); oledPaint(); }
-function headOff() { ledsOff(); screenOn = false; oledClear(); oledPaint(); }
 
-// ---------------------------------------------------------------- readingCycle and soilTypeMenu
-let pressHandler = null;                     // set while the firmware is waiting for a press
-async function readingCycle() {
-  S.busy = true; headOn();
-  let again;
-  do {
-    again = false; ledsOff();
-    oledClear(); oledLine(7, "MEASURING"); oledPaint(); status("Measuring: 1 discarded + 8 gates of 62.5 ms, then EC, NTC, SHT40");
+// ---------------------------------------------------------------- readingCycle and soilTypeMenu (soil-probe.ino)
+let pressHandler=null,menuHandler=null;
+async function readingCycle(){
+  S.busy=true;screenOn=true;oledClear();let again;
+  do{again=false;ledsOff();oledClear();oledLine(7,"MEASURING");status("Measuring: one discarded gate and 8 gates of 62.5 ms, then soil temperature, EC and air.");
     await sleep(900);
-    const r = measureAll();
-    S.logN++; S.log.unshift({ n: S.logN, ...r }); S.log = S.log.slice(0, 12);
-    showReading(r); renderTrace(r); renderLog();
-    if (r.flags.includes("low battery")) {
-      status("Low battery warning: all lights flash 3 times with low beeps");
-      for (let i = 0; i < 3; i++) { ledShowCount(4); beep(1000, 200); await sleep(200); ledsOff(); await sleep(300); }
-    }
-    if (r.flags.includes("probe fault")) {
-      status("Probe fault: lights run bottom to top 3 times, one long low beep");
-      for (let k = 0; k < 3; k++) { for (let i = 0; i < 4; i++) { ledShowClass(i); await sleep(120); } ledsOff(); await sleep(200); }
-      beep(1000, 600); await sleep(1500); break;
-    }
-    ledShowClass(r.cls); beep(2700, 80);
-    const show = $("fast").checked ? 4000 : 15000;
-    status(`${CLASS_COLOUR[r.cls]} for ${show / 1000} s. Press again for a new reading.`);
-    again = await waitPress(show);
-  } while (again);
-  headOff(); status("Asleep. Press the button."); S.busy = false;
+    const r=measureAll();S.logN++;S.log.unshift({n:S.logN,...r});S.log=S.log.slice(0,14);
+    showReading(r);renderTrace(r);renderLog();drawChart();
+    if(r.flags.includes("low battery")){status("Low battery: all four lights flash together 3 times with low beeps.");
+      for(let i=0;i<3;i++){ledShowCount(4);beep(1000,200);await sleep(200);ledsOff();await sleep(300);}}
+    if(r.flags.includes("probe fault")){status("Probe fault: the lights run bottom to top 3 times, one long low beep.");
+      for(let k=0;k<3;k++){for(let i=0;i<4;i++){ledShowClass(i);await sleep(120);}ledsOff();await sleep(200);}beep(1000,600);await sleep(1500);break;}
+    ledShowClass(r.cls);beep(2700,80);
+    status(`${CLASS_COLOUR[r.cls]}: ${["very low moisture, consider watering if the crop needs it.","moderate moisture, check the crop before watering.","adequate moisture, extra watering can usually wait.","very wet, reduce or pause watering."][r.cls]} Shown for 15 s; press again to re-measure.`);
+    again=await waitPress($("fast").checked?4000:DISPLAY_MS);
+  }while(again);
+  ledsOff();screenOn=false;oledClear();status("Asleep. Press the button.");S.busy=false;
 }
-function waitPress(ms) {
-  return new Promise(res => {
-    const t = setTimeout(() => { pressHandler = null; res(false); }, ms); timers.push(t);
-    pressHandler = () => { clearTimeout(t); pressHandler = null; res(true); };
-  });
-}
-async function soilTypeMenu() {
-  S.busy = true; headOn(); beep(2700, 80); await sleep(180); beep(2700, 80);
-  let sel = S.soil, saved = false;
-  const draw = () => { ledShowCount(sel + 1); oledClear(); oledLine(0, "SOIL", 2); oledLine(2, "TYPE", 2); oledLine(6, SOILS[sel]);
-    oledLine(11, "PRESS:"); oledLine(12, "NEXT"); oledLine(14, "HOLD 3 S:"); oledLine(15, "SAVE"); oledPaint(); };
-  draw(); status("Soil-type menu: press for next, hold 3 s to save. Lights show 1, 2 or 3.");
-  while (true) {
-    const ev = await new Promise(res => { const t = setTimeout(() => { menuHandler = null; res("timeout"); }, MENU_TIMEOUT); timers.push(t);
-      menuHandler = kind => { clearTimeout(t); menuHandler = null; res(kind); }; });
-    if (ev === "timeout") break;
-    if (ev === "hold") { S.soil = sel; saved = true; break; }
-    sel = (sel + 1) % 3; beep(2700, 40); draw();
-  }
+function waitPress(ms){return new Promise(res=>{const t=setTimeout(()=>{pressHandler=null;res(false);},ms);pressHandler=()=>{clearTimeout(t);pressHandler=null;res(true);};});}
+async function soilTypeMenu(){
+  S.busy=true;screenOn=true;beep(2700,80);await sleep(180);beep(2700,80);
+  let sel=S.soilSlot,saved=false;
+  const draw=()=>{ledShowCount(sel+1);oledClear();oledLine(0,"SOIL",2);oledLine(2,"TYPE",2);oledLine(6,SOILS[sel]);
+    oledLine(11,"PRESS:");oledLine(12,"NEXT");oledLine(14,"HOLD 3 S:");oledLine(15,"SAVE");};
+  draw();status("Soil-type menu: press for the next type, hold 3 s to save. 1, 2 or 3 lights = Standard, Clay, Sand.");
+  for(;;){const ev=await new Promise(res=>{const t=setTimeout(()=>{menuHandler=null;res("timeout");},MENU_TIMEOUT);menuHandler=k=>{clearTimeout(t);menuHandler=null;res(k);};});
+    if(ev==="timeout")break;if(ev==="hold"){S.soilSlot=sel;saved=true;break;}sel=(sel+1)%3;beep(2700,40);draw();}
   ledsOff();
-  if (saved) { oledClear(); oledLine(7, "SAVED", 2); oledPaint(); for (let i = 0; i < 3; i++) { beep(2700, 80); await sleep(180); }
-    status(`Saved: ${SOILS[S.soil]}.`); await sleep(1200); }
-  else { beep(1000, 600); status("Menu closed without a change (15 s timeout)."); await sleep(1200); }
-  headOff(); renderCal(); S.busy = false;
-  if (!saved) status("Asleep. Press the button.");
+  if(saved){oledClear();oledLine(7,"SAVED",2);for(let i=0;i<3;i++){beep(2700,80);await sleep(180);}status(`Saved: the device now uses its ${SOILS[S.soilSlot]} curve.`);await sleep(1200);}
+  else{beep(1000,600);status("Menu closed without a change after 15 s.");await sleep(1200);}
+  screenOn=false;oledClear();S.busy=false;drawChart();if(!saved)status("Asleep. Press the button.");
 }
-let menuHandler = null;
+let downAt=0,holdTimer=null,holdFired=false,btnPressed=false;
+function btnDown(){
+  if(downAt)return;downAt=performance.now();holdFired=false;btnPressed=true;$("push").classList.add("down");
+  try{audio=audio||new(window.AudioContext||window.webkitAudioContext)();if(audio.state==="suspended")audio.resume();}catch(e){}
+  holdTimer=setTimeout(()=>{holdFired=true;if(menuHandler)menuHandler("hold");else if(!S.busy)soilTypeMenu();},HOLD_MS);
+}
+function btnUp(){
+  if(!downAt)return;$("push").classList.remove("down");btnPressed=false;clearTimeout(holdTimer);
+  const held=performance.now()-downAt;downAt=0;if(holdFired||held<30)return;
+  if(menuHandler)menuHandler("press");else if(pressHandler)pressHandler();else if(!S.busy)readingCycle();
+}
+$("push").addEventListener("pointerdown",e=>{e.preventDefault();btnDown();});
+window.addEventListener("pointerup",btnUp);window.addEventListener("pointercancel",btnUp);
+$("push").addEventListener("keydown",e=>{if((e.key===" "||e.key==="Enter")&&!e.repeat){e.preventDefault();btnDown();}});
+$("push").addEventListener("keyup",e=>{if(e.key===" "||e.key==="Enter")btnUp();});
 
-// ---------------------------------------------------------------- button: press vs 3 s hold
-let downAt = 0, holdTimer = null, holdFired = false;
-function btnDown(e) {
-  e.preventDefault(); $("push").classList.add("down"); downAt = performance.now(); holdFired = false;
-  if (audio && audio.state === "suspended") audio.resume();
-  holdTimer = setTimeout(() => {
-    holdFired = true;
-    if (menuHandler) menuHandler("hold");
-    else if (!S.busy) soilTypeMenu();
-  }, HOLD_MS);
+// ---------------------------------------------------------------- trace, log, state, chart
+const hhmm=t=>new Date(T0+t*1000).toISOString().slice(11,16);
+function renderTrace(r){
+  const[lo,hi]=zone();const c=curve();
+  const rows=[["Electrode zone",`${lo}–${hi} mm below the surface`],["Soil water there (model)",r.trueVwc!=null?r.trueVwc.toFixed(1)+" % VWC":"—"]];
+  if(r.flags.includes("probe fault"))rows.push(["Probe frequency","no signal"],["Result","PROBE FAULT, no colour"]);
+  else rows.push(["Probe frequency f",r.freq.toLocaleString("en-GB")+" Hz"],["x = (f_air − f) / (f_air − f_water)",r.x.toFixed(4)],
+    [`VWC = ${c.c[0]} + ${c.c[1]} x`,r.vwc.toFixed(1)+" %"],[`Thresholds, ${SOILS[r.soil]} (t_ry / t_yg / t_gb)`,r.t.map(v=>(v/10).toFixed(1)).join(" / ")+" %"],
+    ["Light",`<span class="chip" style="background:${CHIP[r.cls]}">${CLASS_COLOUR[r.cls]}</span>`],
+    ["Reading error",(r.vwc-r.trueVwc>=0?"+":"")+(r.vwc-r.trueVwc).toFixed(1)+" % VWC"+(r.uncal?" (uncalibrated slot)":"")]);
+  rows.push(["Battery",(r.vbat/1000).toFixed(2)+" V"+(r.vbat<VBAT_CRIT?", change the cells":r.vbat<VBAT_LOW?", low":"")]);
+  if(r.flags.length)rows.push(["Flags",`<span class="flag">${r.flags.join(", ")}</span>`]);
+  $("trace").tBodies[0].innerHTML=rows.map(([k,v])=>`<tr><td>${k}</td><td class="v">${v}</td></tr>`).join("");
 }
-function btnUp() {
-  if (!downAt) return;
-  $("push").classList.remove("down"); clearTimeout(holdTimer);
-  const held = performance.now() - downAt; downAt = 0;
-  if (holdFired || held < 30) return;          // 30 ms debounce
-  if (menuHandler) menuHandler("press");
-  else if (pressHandler) pressHandler();
-  else if (!S.busy) readingCycle();
+function renderLog(){
+  $("log").tBodies[0].innerHTML=S.log.map(r=>`<tr><td class="v">${r.n}</td><td class="v">${hhmm(r.time)}</td><td class="v">${r.freq?r.freq.toLocaleString("en-GB"):"—"}</td>
+    <td class="v">${r.vwc!=null?r.vwc.toFixed(1):"—"}</td><td>${r.cls!=null?`<span class="chip" style="background:${CHIP[r.cls]}">${CLASS_COLOUR[r.cls]}</span>`:"—"}</td>
+    <td>${[r.uncal?"uncal":"",...r.flags].filter(Boolean).join(", ")}</td></tr>`).join("");
 }
-const push = $("push");
-push.addEventListener("pointerdown", btnDown);
-window.addEventListener("pointerup", btnUp);
-push.addEventListener("keydown", e => { if ((e.key === " " || e.key === "Enter") && !e.repeat) btnDown(e); });
-push.addEventListener("keyup", e => { if (e.key === " " || e.key === "Enter") btnUp(); });
-
-// ---------------------------------------------------------------- trace and log
-function renderTrace(r) {
-  const tb = $("trace").tBodies[0];
-  const [lo, hi] = electrodeZone();
-  const rows = [["Electrode zone (depth)", `${Math.max(lo, 0)}–${hi} mm`], ["True soil VWC there", r.trueVwc.toFixed(1) + " %"]];
-  if (r.flags.includes("probe fault")) rows.push(["Probe frequency", "no signal"], ["Result", "PROBE FAULT, no colour"]);
-  else rows.push(
-    ["Probe frequency f", r.freq.toLocaleString("en-GB") + " Hz"],
-    ["x = (f_air − f) / (f_air − f_water)", r.x.toFixed(4)],
-    [`VWC = ${curve().c[0]} + ${curve().c[1]} x`, r.vwc.toFixed(1) + " %"],
-    ["In 0.1 % units", String(r.v10)],
-    [`Thresholds ${SOILS[r.soil]} (t_ry / t_yg / t_gb)`, r.t.join(" / ")],
-    ["Light", `<span class="chip" style="background:${CHIP[r.cls]}">${CLASS_COLOUR[r.cls]}</span>`],
-    ["Reading error", (r.vwc - r.trueVwc >= 0 ? "+" : "") + (r.vwc - r.trueVwc).toFixed(1) + " % VWC" + (r.uncal ? " (uncalibrated)" : "")]);
-  rows.push(["Battery", (r.vbat / 1000).toFixed(2) + " V" + (r.vbat < VBAT_CRIT ? " — change cells" : r.vbat < VBAT_LOW ? " — low" : "")]);
-  if (r.flags.length) rows.push(["Flags", `<span class="flag">${r.flags.join(", ")}</span>`]);
-  tb.innerHTML = rows.map(([k, v]) => `<tr><td>${k}</td><td class="v">${v}</td></tr>`).join("");
+function renderState(){
+  const[lo,hi]=zone(),h=(S.t/3600)%24,a=air(h),day=Math.floor(S.t/86400);
+  $("k-true").innerHTML=`${trueVwc().toFixed(1)} % <small>VWC, ${lo}–${hi} mm deep</small>`;
+  $("k-top").innerHTML=`${S.m[0].toFixed(1)} % <small>field capacity ${SOILP[S.field].fc} %, wilting ${SOILP[S.field].wp} %</small>`;
+  $("k-air").innerHTML=`${a.T.toFixed(0)} °C <small>humidity ${a.RH.toFixed(0)} %, Harmattan haze</small>`;
+  const today=S.poured.filter(t=>Math.floor(t/86400)===day).length;
+  $("k-water").innerHTML=`${today*10} L <small>${today?today+" bucket"+(today>1?"s":"")+", last at "+hhmm(S.poured[S.poured.length-1]):"no bucket yet today"}</small>`;
+  $("p-sub").textContent=`Device soil slot ${SOILS[S.soilSlot]}, ${curve()===EXAMPLE_STD?"calibrated (example)":"placeholder curve, shows UNCAL"}, ${S.logN} readings logged`;
 }
-function renderLog() {
-  $("log").tBodies[0].innerHTML = S.log.map(r => `<tr><td class="v">${r.n}</td><td class="v">${r.freq ? r.freq.toLocaleString("en-GB") : "—"}</td>
-    <td class="v">${r.vwc !== undefined ? r.vwc.toFixed(1) : "—"}</td><td>${r.cls !== undefined ? `<span class="chip" style="background:${CHIP[r.cls]}">${CLASS_COLOUR[r.cls]}</span>` : "—"}</td>
-    <td>${SOILS[r.soil]}</td><td class="v">${(r.vbat / 1000).toFixed(2)}</td><td>${[r.uncal ? "uncal" : "", ...r.flags].filter(Boolean).join(", ")}</td></tr>`).join("");
-}
-
-// ---------------------------------------------------------------- soil cross-section drawing
-function drawSoil() {
-  const c = $("soil"), g = c.getContext("2d"), W = c.width, H = c.height;
-  const cs = getComputedStyle(document.documentElement);
-  const sky = cs.getPropertyValue("--panel").trim(), ink = cs.getPropertyValue("--ink").trim(), muted = cs.getPropertyValue("--muted").trim();
-  g.clearRect(0, 0, W, H);
-  const top = 90, mmPx = 1.5;                  // surface line and scale
-  g.fillStyle = sky; g.fillRect(0, 0, W, top);
-  for (let y = top; y < H; y++) {              // moisture shading: dry = pale laterite, wet = dark
-    const m = moistureAt((y - top) / mmPx), k = Math.min(1, (m - 2) / 40);
-    g.fillStyle = `rgb(${Math.round(214 - 120 * k)}, ${Math.round(150 - 95 * k)}, ${Math.round(110 - 70 * k)})`;
-    g.fillRect(0, y, W, 1);
-  }
-  g.fillStyle = "#5d8a3a";                     // maize seedling for scale
-  g.fillRect(70, top - 46, 3, 46); g.beginPath(); g.ellipse(62, top - 30, 12, 4, -0.5, 0, 7); g.ellipse(82, top - 38, 13, 4, 0.5, 0, 7); g.fill();
-  g.font = "600 13px Barlow, sans-serif"; g.fillStyle = muted;
-  [50, 100, 150].forEach(d => { const y = top + d * mmPx; g.fillStyle = "rgba(0,0,0,.25)"; g.fillRect(0, y, 18, 1);
-    g.fillStyle = "#fff"; g.fillText(d / 10 + " cm", 22, y + 4); });
-  // probe: tip at depth, fork 140 mm, housing from 50 mm above the tip
-  const x0 = 300, tipY = top + S.depth * mmPx;
-  const yAt = mmAboveTip => tipY - mmAboveTip * mmPx;
-  g.fillStyle = "#1f7a3a"; g.beginPath();      // fork board with pointed tip
-  g.moveTo(x0 - 15, yAt(50)); g.lineTo(x0 + 15, yAt(50)); g.lineTo(x0 + 15, yAt(12)); g.lineTo(x0, yAt(0)); g.lineTo(x0 - 15, yAt(12)); g.closePath(); g.fill();
-  g.fillStyle = "rgba(255, 215, 0, .85)"; g.fillRect(x0 - 4.5, yAt(ELEC_HI), 9, (ELEC_HI - ELEC_LO) * mmPx);   // sensing electrode
-  g.fillStyle = "#b9bcc2"; [-22.5, 22.5].forEach(dx => g.fillRect(x0 + dx - 2, yAt(50), 4, 30 * mmPx));          // EC pins 20-50 mm
-  g.fillStyle = "#3a3e44"; g.fillRect(x0 - 28, yAt(132), 57, (132 - 50) * mmPx);                                // probe housing
-  g.fillStyle = "#e8e8e0"; g.fillRect(x0 - 15, 0, 30, Math.max(0, yAt(132)));                                  // shaft
-  g.fillStyle = "#fff"; [[50, 1], [100, 2], [150, 3]].forEach(([d, n]) => {    // depth dots above each mark
-    for (let k = 0; k < n; k++) { g.beginPath(); g.arc(x0 + 34, yAt(d + 4 + k * 6), 2.5, 0, 7); g.fill(); } });
-  // electrode zone annotation
-  const [lo, hi] = electrodeZone();
-  g.strokeStyle = "#fff"; g.lineWidth = 1.5; g.beginPath();
-  g.moveTo(x0 + 50, top + Math.max(lo, 0) * mmPx); g.lineTo(x0 + 58, top + Math.max(lo, 0) * mmPx); g.lineTo(x0 + 58, top + hi * mmPx); g.lineTo(x0 + 50, top + hi * mmPx); g.stroke();
-  g.fillStyle = "#fff"; g.fillText("reads " + trueVwc().toFixed(1) + " %", x0 + 64, top + ((Math.max(lo, 0) + hi) / 2) * mmPx + 4);
-  g.fillStyle = ink; g.fillText("ground", 8, top - 6);
+function sampleHist(){S.hist.push({t:S.t,m:S.m.slice()});while(S.hist.length&&S.t-S.hist[0].t>48*3600)S.hist.shift();}
+function drawChart(){
+  const cv=$("chart"),dpr=Math.min(2,devicePixelRatio||1),W=cv.clientWidth,H=cv.clientHeight;if(!W)return;
+  cv.width=W*dpr;cv.height=H*dpr;const x=cv.getContext("2d");x.scale(dpr,dpr);
+  const L=40,R=10,T=8,B=22,pw=W-L-R,ph=H-T-B,t1=S.t,t0=t1-48*3600,lo=0,hi=50;
+  const X=t=>L+(t-t0)/(48*3600)*pw,Y=v=>T+ph-(v-lo)/(hi-lo)*ph;
+  const th=curve().t.map(v=>v/10),band=["--led-red","--led-yellow","--led-green","--led-blue"],edges=[lo,...th,hi];
+  for(let i=0;i<4;i++){x.fillStyle=css(band[i]);x.globalAlpha=.1;x.fillRect(L,Y(edges[i+1]),pw,Y(edges[i])-Y(edges[i+1]));}x.globalAlpha=1;
+  x.fillStyle=css("--night");for(let d=Math.floor(t0/86400)-1;d<=Math.floor(t1/86400);d++){const a=d*86400+18.5*3600,b=a+12*3600;const xa=Math.max(L,X(a)),xb=Math.min(W-R,X(b));if(xb>xa)x.fillRect(xa,T,xb-xa,ph);}
+  x.strokeStyle=css("--line");x.fillStyle=css("--muted");x.font="12px "+css("--font");x.lineWidth=1;
+  for(const v of [0,10,20,30,40,50]){const y=Y(v);x.beginPath();x.moveTo(L,y);x.lineTo(W-R,y);x.stroke();x.textAlign="right";x.fillText(v+" %",L-6,y+4);}
+  x.textAlign="center";for(let t=Math.ceil(t0/21600)*21600;t<=t1;t+=21600)x.fillText(hhmm(t),Math.min(W-R-18,Math.max(L+18,X(t))),H-5);
+  x.fillStyle=css("--water");for(const p of S.poured)if(p>t0){x.fillRect(X(p)-1,T,2,ph);}
+  const cols=["#c98a5f",css("--laterite"),css("--ink")];
+  for(let k=0;k<3;k++){x.beginPath();S.hist.forEach((s,i)=>{const px=X(s.t),py=Y(s.m[k]);i?x.lineTo(px,py):x.moveTo(px,py);});x.strokeStyle=cols[k];x.lineWidth=k===1?2.4:1.7;x.lineJoin="round";x.stroke();}
+  for(const r of S.log)if(r.vwc!=null&&r.time>t0){x.fillStyle=css(band[r.cls]);x.strokeStyle=css("--paper");x.lineWidth=2;x.beginPath();x.arc(X(r.time),Y(r.vwc),5,0,7);x.fill();x.stroke();}
+  const day=S.hist.filter(s=>t1-s.t<86400).map(s=>s.m[0]);
+  $("c-sum").textContent=day.length?`top 5 cm from ${Math.max(...day).toFixed(0)} % down to ${Math.min(...day).toFixed(0)} % in the last 24 h`:"";
 }
 
 // ---------------------------------------------------------------- controls
-function bindRange(id, key, fmt, idx) {
-  const el = $(id), out = $(id + "o");
-  const get = () => idx === undefined ? S[key] : S[key][idx];
-  el.value = get(); out.textContent = fmt(get());
-  el.addEventListener("input", () => { const v = parseFloat(el.value); if (idx === undefined) S[key] = v; else S[key][idx] = v; out.textContent = fmt(v); drawSoil(); });
+function seg(id,apply){const g=$(id);g.querySelectorAll("button").forEach(b=>b.onclick=()=>{g.querySelectorAll("button").forEach(o=>o.setAttribute("aria-pressed",o===b?"true":"false"));apply(b.dataset.v);});}
+seg("depth",v=>{S.depth=+v;status(`Probe pushed in to the ${v/10} cm mark. Press the button to measure.`);});
+seg("field",v=>{S.field=+v;const p=SOILP[S.field];S.m=[p.fc*0.75,p.fc*0.85,p.fc*0.9];S.hist=[];sampleHist();drawChart();});
+seg("cal",v=>{S.cal=v;drawChart();});
+const showV=()=>{$("vbat-v").textContent=S.vbat.toFixed(2)+" V"+(S.vbat*1000<VBAT_CRIT?", change cells":S.vbat*1000<VBAT_LOW?", low":"");};
+$("vbat").oninput=e=>{S.vbat=+e.target.value;showV();};showV();
+$("pour").onclick=()=>{pour(20);S.pouring=1;status("Poured one 10 L bucket around the plant (about 20 mm). Wait a little, then measure again.");};
+let running=true;$("run").onclick=()=>{running=!running;$("run").textContent=running?"Pause":"Run";};
+
+// ---------------------------------------------------------------- 3D (FreeCAD frame: mm, z up along the probe, -y is the face with the lights)
+// Positions from cad/tools/enclosure.py: LEDs at board x 4.47, y 22 + 12 n; OLED window centre; 16 mm button at board (20, 112).
+const G={ledX:-37.58,ledZ:[565.4,577.4,589.4,601.4],ledY:-21,face:-28,oled:{x:-8.16,z:608.5,w:10.86,h:21.74,y:-14.2},btn:{x:-22.05,z:511.4},
+  pit:{x0:-280,x1:280,y0:-460,y1:8,d:260}};
+let scene,camera,renderer,controls,root,probe,sunLight,hemi,oledTex=null,ledMeshes=[],ledGlows=[],ledLights=[],btnCap,pitTex,pitCtx,wetPatch,drops;
+const lin=hex=>new THREE.Color(hex).convertSRGBToLinear();
+function mat(color,o={}){return new THREE.MeshStandardMaterial(Object.assign({color:lin(color),roughness:.6,metalness:.02},o));}
+function speckle(base,n,spread,w=256){const c=document.createElement("canvas");c.width=c.height=w;const x=c.getContext("2d");x.fillStyle=base;x.fillRect(0,0,w,w);
+  for(let i=0;i<n;i++){const k=(Math.random()-.5)*spread;x.fillStyle=`rgba(${k>0?255:0},${k>0?235:0},${k>0?210:0},${Math.abs(k)})`;x.fillRect(Math.random()*w,Math.random()*w,1+Math.random()*3,1+Math.random()*3);}
+  const t=new THREE.CanvasTexture(c);t.wrapS=t.wrapT=THREE.RepeatWrapping;t.encoding=THREE.sRGBEncoding;return t;}
+function soilRGB(v){const k=Math.max(0,Math.min(1,(v-5)/40));return[Math.round(198-112*k),Math.round(132-78*k),Math.round(88-52*k)];}
+function glowTexture(){const c=document.createElement("canvas");c.width=c.height=64;const x=c.getContext("2d");const g=x.createRadialGradient(32,32,0,32,32,32);
+  g.addColorStop(0,"rgba(255,255,255,1)");g.addColorStop(.25,"rgba(255,255,255,.55)");g.addColorStop(1,"rgba(255,255,255,0)");x.fillStyle=g;x.fillRect(0,0,64,64);return new THREE.CanvasTexture(c);}
+function init3D(){
+  const host=$("view");renderer=new THREE.WebGLRenderer({antialias:true});renderer.setPixelRatio(Math.min(2,devicePixelRatio));
+  renderer.outputEncoding=THREE.sRGBEncoding;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.0;
+  renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;host.prepend(renderer.domElement);
+  scene=new THREE.Scene();scene.background=new THREE.Color(0xc9b896);scene.fog=new THREE.Fog(0xc9b896,2500,9000);
+  camera=new THREE.PerspectiveCamera(34,1,2,40000);
+  hemi=new THREE.HemisphereLight(0xf3ead8,0x6b4a33,.6);scene.add(hemi);
+  sunLight=new THREE.DirectionalLight(0xfff0d8,2);sunLight.castShadow=true;sunLight.shadow.mapSize.set(2048,2048);
+  const sc=sunLight.shadow.camera;sc.left=-1100;sc.right=1100;sc.top=1100;sc.bottom=-1100;sc.near=50;sc.far=8000;sunLight.shadow.bias=-0.0005;
+  scene.add(sunLight);scene.add(sunLight.target);
+  root=new THREE.Group();root.rotation.x=-Math.PI/2;scene.add(root);
+  const add=(geo,m,p,parent=root)=>{const me=new THREE.Mesh(geo,m);me.position.set(...p);me.castShadow=me.receiveShadow=true;parent.add(me);return me;};
+
+  // ground with the pit cut out
+  const P=G.pit,shape=new THREE.Shape();shape.moveTo(-9000,-9000);shape.lineTo(9000,-9000);shape.lineTo(9000,9000);shape.lineTo(-9000,9000);shape.closePath();
+  const hole=new THREE.Path();hole.moveTo(P.x0,P.y0);hole.lineTo(P.x0,P.y1);hole.lineTo(P.x1,P.y1);hole.lineTo(P.x1,P.y0);hole.closePath();shape.holes.push(hole);
+  const gt=speckle("#b77a4f",9000,.5);gt.repeat.set(60,60);
+  const gg=new THREE.ShapeGeometry(shape);const uv=gg.attributes.uv;for(let i=0;i<uv.count;i++)uv.setXY(i,uv.getX(i)/18000+.5,uv.getY(i)/18000+.5);
+  const ground=new THREE.Mesh(gg,mat(0xffffff,{map:gt,roughness:1}));ground.receiveShadow=true;root.add(ground);
+  // wet patch where the bucket goes
+  wetPatch=new THREE.Mesh(new THREE.CircleGeometry(470,48),new THREE.MeshStandardMaterial({color:lin(0x3a2416),transparent:true,opacity:0,roughness:.35,depthWrite:false}));
+  wetPatch.position.set(-60,500,0.6);root.add(wetPatch);
+  // ridges and maize rows (young plants, about 50 cm)
+  const ridgeM=mat(0xffffff,{map:gt,roughness:1});
+  for(const ry of [380,1180,-1240]){const r=new THREE.Mesh(new THREE.CylinderGeometry(260,260,5200,24,1,false,0,Math.PI),ridgeM);r.rotation.z=Math.PI/2;r.scale.set(1,1,.35);r.position.set(0,ry,0);r.receiveShadow=true;root.add(r);}
+  const stalkM=mat(0x6f8f3a,{roughness:.7}),leafM=mat(0x5b8a2e,{roughness:.55,side:THREE.DoubleSide});
+  // leaf: a strap about 330 mm long, bent so it rises from the stalk and droops at the tip
+  const leafGeo=new THREE.PlaneGeometry(34,330,1,12);leafGeo.translate(0,165,0);
+  {const p=leafGeo.attributes.position;for(let i=0;i<p.count;i++){const y=p.getY(i),k=y/330;p.setX(i,p.getX(i)*(1-k*0.85)*(0.6+Math.sin(Math.PI*Math.min(1,k*1.4))*0.6));p.setZ(i,-110*k*k);}leafGeo.computeVertexNormals();}
+  const plant=(px,py,s)=>{const g=new THREE.Group();g.position.set(px,py,40);g.rotation.z=Math.random()*6.3;g.scale.setScalar(s);
+    const st=new THREE.Mesh(new THREE.CylinderGeometry(8,12,430,8),stalkM);st.rotation.x=Math.PI/2;st.position.z=215;st.castShadow=true;g.add(st);
+    for(let k=0;k<8;k++){const l=new THREE.Mesh(leafGeo,leafM);l.castShadow=true;l.position.set(0,0,60+k*48);
+      l.rotation.order="ZXY";l.rotation.set(0.75-k*0.04+(Math.random()-.5)*.2,0,k*Math.PI+(Math.random()-.5)*.5);l.scale.setScalar(1-k*0.06);g.add(l);}
+    const top=new THREE.Mesh(leafGeo,leafM);top.rotation.order="ZXY";top.rotation.set(1.3,0,0.6);top.position.z=440;top.scale.setScalar(.55);g.add(top);
+    root.add(g);};
+  for(const ry of [380,1180,-1240])for(let px=-2400;px<=2400;px+=420){if(Math.abs(px)<300&&ry===380)continue;plant(px+(Math.random()-.5)*60,ry+(Math.random()-.5)*50,0.85+Math.random()*.3);}
+  plant(-210,520,1);   // the plant being checked
+
+  // the pit: back face shows the moisture profile the probe sits in
+  const pc=document.createElement("canvas");pc.width=256;pc.height=240;pitCtx=pc.getContext("2d");pitTex=new THREE.CanvasTexture(pc);pitTex.encoding=THREE.sRGBEncoding;
+  const back=new THREE.Mesh(new THREE.PlaneGeometry(P.x1-P.x0,P.d),mat(0xffffff,{map:pitTex,roughness:.95}));
+  back.rotation.x=Math.PI/2;back.position.set(0,P.y1,-P.d/2);back.receiveShadow=true;root.add(back);   // faces the pit (-y)
+  const wallT=speckle("#8c5636",4000,.5);wallT.repeat.set(2,2);const wallM=mat(0xffffff,{map:wallT,roughness:1,side:THREE.DoubleSide});
+  const side=(w,h,p,rx,ry)=>{const m=new THREE.Mesh(new THREE.PlaneGeometry(w,h),wallM);m.position.set(...p);m.rotation.set(rx,ry,0);m.receiveShadow=true;root.add(m);};
+  side(P.y1-P.y0,P.d,[P.x0,(P.y0+P.y1)/2,-P.d/2],Math.PI/2,Math.PI/2);side(P.y1-P.y0,P.d,[P.x1,(P.y0+P.y1)/2,-P.d/2],Math.PI/2,-Math.PI/2);
+  side(P.x1-P.x0,P.d,[0,P.y0,-P.d/2],Math.PI/2,0);side(P.x1-P.x0,P.y1-P.y0,[0,(P.y0+P.y1)/2,-P.d],0,0);
+  // dug-out soil heaped beside the pit
+  const heap=new THREE.Mesh(new THREE.SphereGeometry(260,24,12,0,Math.PI*2,0,Math.PI/2),mat(0xffffff,{map:gt,roughness:1}));
+  heap.rotation.x=Math.PI/2;heap.scale.set(0.8,0.28,0.6);heap.position.set(680,-330,0);heap.castShadow=heap.receiveShadow=true;root.add(heap);
+
+  // the probe: printed parts from models.json plus the fork, EC pins, lights, screen and button
+  probe=new THREE.Group();root.add(probe);
+  const fs=new THREE.Shape();fs.moveTo(-10,140);fs.lineTo(-10,12);fs.lineTo(0,0);fs.lineTo(10,12);fs.lineTo(10,140);fs.closePath();
+  const fork=new THREE.Mesh(new THREE.ExtrudeGeometry(fs,{depth:1.6,bevelEnabled:false}),mat(0x1d6b3a,{roughness:.3,metalness:.1}));
+  fork.rotation.x=Math.PI/2;fork.position.y=0.8;fork.castShadow=true;probe.add(fork);   // shape drawn in x-z, thickness along y
+  const elec=new THREE.Mesh(new THREE.PlaneGeometry(6,36),mat(0x2a8a4a,{roughness:.25,metalness:.3}));elec.rotation.x=Math.PI/2;elec.position.set(0,-0.9,31);probe.add(elec);
+  const steel=mat(0xb8bcc0,{metalness:.85,roughness:.28});
+  for(const ex of [-15,15]){const pin=new THREE.Mesh(new THREE.CylinderGeometry(1.5,1.5,88,16),steel);pin.rotation.x=Math.PI/2;pin.position.set(ex,0,64);pin.castShadow=true;probe.add(pin);}
+  const glowT=glowTexture();
+  for(let i=0;i<4;i++){
+    const lens=new THREE.Mesh(new THREE.SphereGeometry(2.9,20,14),new THREE.MeshStandardMaterial({color:lin(LED_HEX[i]).multiplyScalar(.35),emissive:lin(LED_HEX[i]),emissiveIntensity:0,roughness:.2,transparent:true,opacity:.92}));
+    lens.position.set(G.ledX,G.ledY,G.ledZ[i]);probe.add(lens);ledMeshes.push(lens);
+    const s=new THREE.Sprite(new THREE.SpriteMaterial({map:glowT,color:LED_HEX[i],blending:THREE.AdditiveBlending,transparent:true,opacity:0,depthWrite:false}));
+    s.scale.set(34,34,1);s.position.set(G.ledX,G.face-2,G.ledZ[i]);probe.add(s);ledGlows.push(s);
+    const pl=new THREE.PointLight(LED_HEX[i],0,260,2);pl.position.set(G.ledX,G.face-8,G.ledZ[i]);probe.add(pl);ledLights.push(pl);
+  }
+  oledTex=new THREE.CanvasTexture(oledCanvas);oledTex.magFilter=THREE.NearestFilter;oledTex.minFilter=THREE.LinearFilter;oledTex.encoding=THREE.sRGBEncoding;
+  const scr=new THREE.Mesh(new THREE.PlaneGeometry(G.oled.w,G.oled.h),new THREE.MeshBasicMaterial({map:oledTex,toneMapped:false}));
+  scr.rotation.x=Math.PI/2;scr.position.set(G.oled.x,G.oled.y,G.oled.z);probe.add(scr);
+  const glass=new THREE.Mesh(new THREE.PlaneGeometry(G.oled.w+6,G.oled.h+6),new THREE.MeshBasicMaterial({color:0x050608}));glass.rotation.x=Math.PI/2;glass.position.set(G.oled.x,G.oled.y+0.3,G.oled.z);probe.add(glass);
+  const bez=new THREE.Mesh(new THREE.CylinderGeometry(9.5,9.5,2.5,32),mat(0x9aa0a5,{metalness:.7,roughness:.3}));bez.position.set(G.btn.x,G.face-1.25,G.btn.z);probe.add(bez);
+  btnCap=new THREE.Mesh(new THREE.CylinderGeometry(6.6,6.6,5,32),mat(0x2b2e32,{roughness:.45}));btnCap.position.set(G.btn.x,G.face-4.5,G.btn.z);btnCap.name="button";probe.add(btnCap);
+
+  // bucket water stream
+  const N=260,pos=new Float32Array(N*3);for(let i=0;i<N;i++){pos[i*3]=-60+Math.random()*60;pos[i*3+1]=380+Math.random()*40;pos[i*3+2]=Math.random()*700;}
+  const dg=new THREE.BufferGeometry();dg.setAttribute("position",new THREE.BufferAttribute(pos,3));
+  drops=new THREE.Points(dg,new THREE.PointsMaterial({color:0xcfe2f3,size:9,transparent:true,opacity:.8,depthWrite:false}));drops.visible=false;root.add(drops);
+
+  controls=new THREE.OrbitControls(camera,renderer.domElement);controls.enableDamping=true;controls.maxPolarAngle=Math.PI*0.62;controls.minDistance=60;controls.maxDistance=6000;
+  setCam("plot");new ResizeObserver(resize).observe(host);resize();loadParts();
+
+  // the 3D button works like the real one
+  const ray=new THREE.Raycaster(),ndc=new THREE.Vector2();
+  renderer.domElement.addEventListener("pointerdown",e=>{const r=renderer.domElement.getBoundingClientRect();ndc.set((e.clientX-r.left)/r.width*2-1,-(e.clientY-r.top)/r.height*2+1);
+    ray.setFromCamera(ndc,camera);if(ray.intersectObject(btnCap).length){controls.enabled=false;btnDown();}});
+  window.addEventListener("pointerup",()=>{controls.enabled=true;});
 }
-const pct = v => v.toFixed(1) + " %";
-bindRange("m1", "m", pct, 0); bindRange("m2", "m", pct, 1); bindRange("m3", "m", pct, 2);
-bindRange("st", "soilT", v => v.toFixed(1) + " °C"); bindRange("ec", "ec", v => v.toFixed(2) + " mS/cm");
-bindRange("vb", "vbat", v => v.toFixed(2) + " V"); bindRange("at", "airT", v => v.toFixed(1) + " °C");
-const PRESETS = { wet: [32, 28, 25], drying: [9, 18, 24], dry: [8, 11, 14], flooded: [42, 40, 38] };
-$("presets").addEventListener("click", e => { const p = PRESETS[e.target.dataset.p]; if (!p) return;
-  S.m = [...p]; ["m1", "m2", "m3"].forEach((id, i) => { $(id).value = S.m[i]; $(id + "o").textContent = pct(S.m[i]); }); drawSoil(); });
-function segSelect(groupId, attr, apply) {
-  const g = $(groupId);
-  g.addEventListener("click", e => { const b = e.target.closest("button"); if (!b) return; apply(b.dataset[attr]); mark(); });
-  const mark = () => g.querySelectorAll("button").forEach(b => b.setAttribute("aria-pressed", String(isOn(b.dataset[attr]))));
-  let isOn = () => false; return f => { isOn = f; mark(); };
+function resize(){const h=$("view");renderer.setSize(h.clientWidth,h.clientHeight,false);camera.aspect=h.clientWidth/h.clientHeight;camera.updateProjectionMatrix();drawChart();}
+const v3=p=>new THREE.Vector3(p[0],p[2],-p[1]);
+const CAMS={plot:[[1250,-1700,1150],[0,0,180]],head:[[-95,-290,600],[-15,-28,568]],pit:[[340,-420,120],[0,0,-90]]};
+function camFor(k){const c=CAMS[k];if(k!=="head")return c;const dz=-S.depth;return[[c[0][0],c[0][1],c[0][2]+dz],[c[1][0],c[1][1],c[1][2]+dz]];}
+function setCam(k){const c=camFor(k);camera.position.copy(v3(c[0]));controls.target.copy(v3(c[1]));controls.update();
+  document.querySelectorAll("[data-cam]").forEach(b=>b.setAttribute("aria-pressed",b.dataset.cam===k?"true":"false"));}
+function loadParts(){
+  const loader=new THREE.STLLoader();
+  const white=mat(0xe9e7e1,{roughness:.5}),grey=mat(0x5b5f63,{roughness:.55}),black=mat(0x1f2124,{roughness:.6}),pvc=mat(0xd4d6d2,{roughness:.4});
+  const list=[["head_shell",white],["head_lid",white],["battery_door",white],["handle",grey],["shaft",pvc],["housing",black],["led_retainer",black],["oled_retainer",black]];
+  const parse=b64=>{const s=atob(b64),u=new Uint8Array(s.length);for(let i=0;i<s.length;i++)u[i]=s.charCodeAt(i);const g=loader.parse(u.buffer);g.computeVertexNormals();return g;};
+  fetch("models.json").then(r=>{if(!r.ok)throw new Error(r.status);return r.json();}).then(M=>{
+    let missing=0;for(const[name,m]of list){if(!M[name]){missing++;continue;}const me=new THREE.Mesh(parse(M[name]),m);me.castShadow=me.receiveShadow=true;probe.add(me);}
+    if(missing)$("loading").textContent=missing+" parts are missing from models.json";else $("loading").hidden=true;
+  }).catch(()=>{$("loading").textContent="The part file could not be loaded. The device below still runs.";});
 }
-segSelect("depth", "d", v => { S.depth = +v; drawSoil(); })(v => +v === S.depth);
-segSelect("cal", "c", v => { S.cal = v; renderCal(); })(v => v === S.cal);
-function renderCal() {
-  const c = curve();
-  $("calnote").textContent = S.cal === "example"
-    ? `Slot in use: ${SOILS[S.soil]}. ` + (S.soil === 0 ? "Worked example from calibration.md: thresholds 17.8 / 20.9 / 25.5 %." : "This slot still holds placeholders (only Standard was calibrated in the example), so the screen shows UNCAL.")
-    : `Slot in use: ${SOILS[S.soil]}. Placeholder curve VWC = ${c.c[1]} x and thresholds ${c.t.map(t => t / 10).join(" / ")} %. The screen shows UNCAL.`;
-  document.querySelectorAll("#cal button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.c === S.cal)));
+function paintPit(){
+  const x=pitCtx,W=256,H=240;
+  for(let y=0;y<H;y++){const[r,g,b]=soilRGB(moistureAt(y*260/H));x.fillStyle=`rgb(${r},${g},${b})`;x.fillRect(0,y,W,1);}
+  x.globalAlpha=.18;for(let i=0;i<1400;i++){const y=Math.random()*H,k=Math.random();x.fillStyle=k>.5?"#f2d2b0":"#1b0f08";x.fillRect(Math.random()*W,y,1+Math.random()*2,1+Math.random()*2);}
+  x.globalAlpha=.35;x.strokeStyle="#e8d6b8";x.lineWidth=.8;   // maize roots near the plant
+  for(let i=0;i<9;i++){x.beginPath();let px=60+i*4,py=0;x.moveTo(px,py);for(let s=0;s<8;s++){px+=(Math.random()-.5)*14;py+=12+Math.random()*10;x.lineTo(px,py);}x.stroke();}
+  x.globalAlpha=1;pitTex.needsUpdate=true;
 }
-renderCal();
-new MutationObserver(() => { drawSoil(); oledPaint(); }).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
-matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { drawSoil(); oledPaint(); });
-document.fonts && document.fonts.ready.then(drawSoil);
-drawSoil(); oledPaint();
+// sun for 14 January at about 9.4 N: the noon sun stands about 58 degrees up, to the south
+const SKY={night:lin(0x101826),dawn:lin(0xd99c6e),day:lin(0xc7b48e),haze:lin(0xd8c49c)};const tmpC=new THREE.Color();
+function lightFor(h){
+  // the sun rises in the east (+x), passes the south (-y) about 58 degrees up at noon, sets in the west
+  const th=Math.PI*(h-6.25)/11.6,tilt=58*Math.PI/180;
+  const dx=Math.cos(th),dy=-Math.sin(th)*Math.cos(tilt),dz=Math.sin(th)*Math.sin(tilt),el=Math.asin(Math.max(-1,Math.min(1,dz)));
+  sunLight.position.copy(v3([dx*4000,dy*4000,Math.max(150,dz*4000)]));sunLight.target.position.copy(v3([0,0,0]));
+  const up=Math.max(0,Math.sin(el)),low=Math.max(0,1-Math.abs(el)/0.3)*(el>-0.2?1:0);
+  tmpC.copy(SKY.night).lerp(SKY.day,Math.min(1,up*2.6)).lerp(SKY.dawn,low*0.6);
+  scene.fog.color.copy(tmpC);scene.background.copy(tmpC).convertLinearToSRGB();$("view").style.background="#"+scene.background.getHexString();
+  sunLight.intensity=up>0?1.55*Math.pow(up,.5):0;sunLight.color.setHSL(0.08,0.55,0.55+0.4*Math.min(1,up*2));
+  hemi.intensity=0.1+0.6*Math.min(1,up*2.5);
+  return up;
+}
+
+// ---------------------------------------------------------------- loop
+let acc=0,last=performance.now(),histAcc=0,pitAcc=1,probeZ=-100,stateAcc=0;
+function prefill(){                         // yesterday: watered at 06:30; today: watered at 06:30, now 15:00
+  S.t=0;S.hist=[];S.poured=[];const p=SOILP[S.field];S.m=[p.fc*0.7,p.fc*0.8,p.fc*0.86];
+  while(S.t<39*3600){if(Math.abs(S.t%86400-6.5*3600)<30)pour(20);stepSoil(60);if(S.t%600<60)sampleHist();}
+}
+function frame(t){
+  const dt=Math.min(0.1,(t-last)/1000);last=t;
+  if(running){acc+=dt*parseFloat($("speed").value);let n=0;while(acc>=10&&n<400){stepSoil(10);acc-=10;n++;histAcc+=10;if(histAcc>=600){histAcc=0;sampleHist();}}}
+  const h=(S.t/3600)%24;
+  if(oledDirty)oledPaint();
+  if(renderer){
+    const up=lightFor(h);
+    probeZ+=(-S.depth-probeZ)*Math.min(1,dt*4);probe.position.z=probeZ;
+    for(let i=0;i<4;i++){const v=ledState[i];ledMeshes[i].material.emissiveIntensity=v*3.2;ledGlows[i].material.opacity=v*(0.95-0.55*up);ledLights[i].intensity=v*1.4;}
+    btnCap.position.y=G.face-(btnPressed?3:4.5);
+    if(S.pouring>0){S.pouring=Math.max(0,S.pouring-dt/2.5);drops.visible=true;const a=drops.geometry.attributes.position;for(let i=0;i<a.count;i++){let z=a.getZ(i)-dt*2600;if(z<0)z+=700;a.setZ(i,z);}a.needsUpdate=true;}else drops.visible=false;
+    wetPatch.material.opacity=Math.max(0,Math.min(.55,(S.m[0]-SOILP[S.field].wp)/(SOILP[S.field].sat-SOILP[S.field].wp)*0.75-0.05));
+    pitAcc+=dt;if(pitAcc>0.5){pitAcc=0;paintPit();}
+    controls.update();renderer.render(scene,camera);
+  }
+  stateAcc+=dt;if(stateAcc>0.5){stateAcc=0;renderState();if(!S.busy)drawChart();}
+  $("h-time").textContent=hhmm(S.t);
+  const a=air(h);$("h-sun").textContent=`${a.T.toFixed(0)} °C, humidity ${a.RH.toFixed(0)} %`+(sun(h)>0?`, plants using ${(ET_DAY*sun(h)/(11.6*2/Math.PI)).toFixed(2)} mm/h`:", night");
+  $("h-soil").textContent=`Probe at the ${S.depth/10} cm mark reads soil at ${trueVwc().toFixed(1)} % water`;
+  requestAnimationFrame(frame);
+}
+document.querySelectorAll("[data-cam]").forEach(b=>b.onclick=()=>setCam(b.dataset.cam));
+prefill();renderState();oledPaint();
+if(window.THREE&&THREE.STLLoader&&THREE.OrbitControls)init3D();else $("loading").textContent="The 3D library could not load. The device below still runs.";
+requestAnimationFrame(frame);
+setTimeout(()=>{if(!S.busy)readingCycle();},700);   // open on a reading, as if the farmer has just pressed the button
 </script>
+
 </body>
 </html>

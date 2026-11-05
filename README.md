@@ -1,13 +1,15 @@
-# Soil Probe Simulator
+# Soil Probe Twin
 
-Browser simulation of the handheld soil moisture probe designed by Team 5, Women-In-WACREN
+3D simulation of the handheld soil moisture probe designed by Team 5, Women-In-WACREN
 Climate Innovation Lab 2026, for women smallholder farmers in Northern Ghana.
 
 Open the live page: https://farihannitrate-bit.github.io/soil-probe-simulator/
 
-Set the soil moisture, push the probe in to the 5, 10 or 15 cm mark and press the button.
-The page runs the same steps as the device's revision A firmware: the screen font and
-layout, the frequency to moisture to colour calculation, the 15 s result, the low-battery
-and probe-fault patterns, and the 3 s hold for the soil-type menu.
+The probe is built from its own 3D-print files (enclosure revision A, packed in
+`models.json`) and stands in a hand-watered maize plot near Tamale on a modelled
+Harmattan day, with a pit dug in front so the buried sensing fork is visible. Press the
+button on the head for a reading, hold it 3 s for the soil-type menu, change the
+insertion depth, soil and battery, and pour a bucket to wet the soil.
 
-The simulated soil response is illustrative, not measured.
+The lights, screen and button run the same steps as the device's revision A firmware.
+The soil and weather are modelled, not measured.
