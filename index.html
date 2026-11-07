@@ -303,7 +303,7 @@ function showReading(r){
 // ---------------------------------------------------------------- readingCycle and soilTypeMenu (soil-probe.ino)
 let pressHandler=null,menuHandler=null;
 async function readingCycle(){
-  S.busy=true;screenOn=true;oledClear();let again;
+  S.busy=true;screenOn=true;oledClear();let again,openMenu=false;
   do{again=false;ledsOff();oledClear();oledLine(7,"MEASURING");status("Measuring: one discarded gate and 8 gates of 62.5 ms, then soil temperature, EC and air.");
     await sleep(900);
     const r=measureAll();S.logN++;S.log.unshift({n:S.logN,...r});S.log=S.log.slice(0,14);
@@ -313,12 +313,13 @@ async function readingCycle(){
     if(r.flags.includes("probe fault")){status("Probe fault: the lights run bottom to top 3 times, one long low beep.");
       for(let k=0;k<3;k++){for(let i=0;i<4;i++){ledShowClass(i);await sleep(120);}ledsOff();await sleep(200);}beep(1000,600);await sleep(1500);break;}
     ledShowClass(r.cls);beep(2700,80);
-    status(`${CLASS_COLOUR[r.cls]}: ${["very low moisture, consider watering if the crop needs it.","moderate moisture, check the crop before watering.","adequate moisture, extra watering can usually wait.","very wet, reduce or pause watering."][r.cls]} Shown for 15 s; press again to re-measure.`);
-    again=await waitPress($("fast").checked?4000:DISPLAY_MS);
+    status(`${CLASS_COLOUR[r.cls]}: ${["very low moisture, consider watering if the crop needs it.","moderate moisture, check the crop before watering.","adequate moisture, extra watering can usually wait.","very wet, reduce or pause watering."][r.cls]} Shown for 15 s; press again to re-measure, or hold 3 s for the soil-type menu.`);
+    {const ev=await waitPress($("fast").checked?4000:DISPLAY_MS);again=ev==="press";openMenu=ev==="hold";}
   }while(again);
   ledsOff();screenOn=false;oledClear();status("Asleep. Press the button.");S.busy=false;
+  if(openMenu)soilTypeMenu();   // a 3 s hold while the result was shown
 }
-function waitPress(ms){return new Promise(res=>{const t=setTimeout(()=>{pressHandler=null;res(false);},ms);pressHandler=()=>{clearTimeout(t);pressHandler=null;res(true);};});}
+function waitPress(ms){return new Promise(res=>{const t=setTimeout(()=>{pressHandler=null;res(false);},ms);pressHandler=k=>{clearTimeout(t);pressHandler=null;res(k);};});}
 async function soilTypeMenu(){
   S.busy=true;screenOn=true;beep(2700,80);await sleep(180);beep(2700,80);
   let sel=S.soilSlot,saved=false;
@@ -336,12 +337,12 @@ let downAt=0,holdTimer=null,holdFired=false,btnPressed=false;
 function btnDown(){
   if(downAt)return;downAt=performance.now();holdFired=false;btnPressed=true;$("push").classList.add("down");
   try{audio=audio||new(window.AudioContext||window.webkitAudioContext)();if(audio.state==="suspended")audio.resume();}catch(e){}
-  holdTimer=setTimeout(()=>{holdFired=true;if(menuHandler)menuHandler("hold");else if(!S.busy)soilTypeMenu();},HOLD_MS);
+  holdTimer=setTimeout(()=>{holdFired=true;if(menuHandler)menuHandler("hold");else if(pressHandler)pressHandler("hold");else if(!S.busy)soilTypeMenu();},HOLD_MS);
 }
 function btnUp(){
   if(!downAt)return;$("push").classList.remove("down");btnPressed=false;clearTimeout(holdTimer);
   const held=performance.now()-downAt;downAt=0;if(holdFired||held<30)return;
-  if(menuHandler)menuHandler("press");else if(pressHandler)pressHandler();else if(!S.busy)readingCycle();
+  if(menuHandler)menuHandler("press");else if(pressHandler)pressHandler("press");else if(!S.busy)readingCycle();
 }
 $("push").addEventListener("pointerdown",e=>{e.preventDefault();btnDown();});
 window.addEventListener("pointerup",btnUp);window.addEventListener("pointercancel",btnUp);
